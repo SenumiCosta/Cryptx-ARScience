@@ -3,83 +3,189 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>ARScience</title>
+    <title>ARScience — Pendulum</title>
 
     <!-- Load MediaPipe Hands from CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1675466124/drawing_utils.js" crossorigin="anonymous"></script>
 
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             background: #000;
             overflow: hidden;
             width: 100vw;
             height: 100vh;
+            font-family: 'Segoe UI', sans-serif;
         }
 
         #camera-feed {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
             object-fit: cover;
         }
 
         #overlay-canvas {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
             z-index: 10;
         }
 
-        #status {
+        /* ---- TOP STATUS BAR ---- */
+        #top-bar {
             position: fixed;
-            top: 20px;
-            left: 20px;
+            top: 0; left: 0; right: 0;
             z-index: 20;
-            color: #ffaa00;
-            font-size: 14px;
-            font-family: monospace;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 8px 14px;
-            border-radius: 8px;
-            max-width: 90vw;
+            background: rgba(0, 0, 0, 0.75);
+            padding: 10px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
-        #finger-info {
-            position: fixed;
-            top: 70px;
-            left: 20px;
-            z-index: 20;
-            color: #00ff88;
-            font-size: 14px;
+        #status {
+            color: #ffaa00;
+            font-size: 13px;
             font-family: monospace;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 8px 14px;
-            border-radius: 8px;
         }
 
         #fps-display {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 20;
             color: #00ccff;
+            font-size: 13px;
+            font-family: monospace;
+        }
+
+        /* ---- PHYSICS RESULTS PANEL ---- */
+        #physics-panel {
+            position: fixed;
+            bottom: 80px;
+            left: 10px;
+            right: 10px;
+            z-index: 20;
+            background: rgba(0, 0, 0, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
+            padding: 14px 16px;
+            display: none;
+        }
+
+        #physics-panel.visible {
+            display: block;
+        }
+
+        .physics-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
+        .physics-label {
+            color: #aaa;
+            font-size: 13px;
+            font-family: monospace;
+        }
+
+        .physics-value {
+            color: #00ff88;
+            font-size: 15px;
+            font-family: monospace;
+            font-weight: bold;
+        }
+
+        .physics-value.highlight {
+            color: #ffaa00;
+            font-size: 20px;
+        }
+
+        .physics-value.error-val {
+            color: #ff6b6b;
+            font-size: 15px;
+        }
+
+        /* ---- SWING COUNTER ---- */
+        #swing-info {
+            position: fixed;
+            top: 50px;
+            left: 16px;
+            z-index: 20;
+            color: #fff;
             font-size: 14px;
             font-family: monospace;
             background: rgba(0, 0, 0, 0.7);
             padding: 8px 14px;
             border-radius: 8px;
+        }
+
+        /* ---- LENGTH INPUT PANEL ---- */
+        #length-panel {
+            position: fixed;
+            bottom: 20px;
+            left: 10px;
+            right: 10px;
+            z-index: 20;
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 12px;
+            padding: 10px 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #length-panel label {
+            color: #ccc;
+            font-size: 12px;
+            font-family: monospace;
+            white-space: nowrap;
+        }
+
+        #length-slider {
+            flex: 1;
+            accent-color: #ffaa00;
+        }
+
+        #length-value {
+            color: #ffaa00;
+            font-size: 14px;
+            font-family: monospace;
+            font-weight: bold;
+            min-width: 55px;
+            text-align: right;
+        }
+
+        #reset-btn {
+            background: rgba(255, 100, 100, 0.3);
+            color: #ff6b6b;
+            border: 1px solid rgba(255, 100, 100, 0.4);
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-family: monospace;
+            cursor: pointer;
+        }
+
+        /* ---- INSTRUCTION OVERLAY ---- */
+        #instruction {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 15;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 18px;
+            text-align: center;
+            pointer-events: none;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+        }
+
+        /* ---- TRAIL EFFECT ---- */
+        .trail-dot {
+            position: absolute;
+            border-radius: 50%;
+            pointer-events: none;
         }
     </style>
 </head>
@@ -88,28 +194,415 @@
     <video id="camera-feed" autoplay playsinline muted></video>
     <canvas id="overlay-canvas"></canvas>
 
-    <div id="status">Loading MediaPipe Hands...</div>
-    <div id="finger-info">Finger: waiting...</div>
-    <div id="fps-display">FPS: --</div>
+    <!-- Top bar -->
+    <div id="top-bar">
+        <span id="status">Loading...</span>
+        <span id="fps-display">FPS: --</span>
+    </div>
+
+    <!-- Swing counter -->
+    <div id="swing-info">Swings: 0 / 5</div>
+
+    <!-- Instruction text -->
+    <div id="instruction">Show your hand to the camera</div>
+
+    <!-- Physics results panel (hidden until we have results) -->
+    <div id="physics-panel">
+        <div class="physics-row">
+            <span class="physics-label">Swings counted:</span>
+            <span class="physics-value" id="result-swings">--</span>
+        </div>
+        <div class="physics-row">
+            <span class="physics-label">Avg period (T):</span>
+            <span class="physics-value" id="result-period">--</span>
+        </div>
+        <div class="physics-row">
+            <span class="physics-label">Pendulum length (L):</span>
+            <span class="physics-value" id="result-length">--</span>
+        </div>
+        <div class="physics-row" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.1);">
+            <span class="physics-label">Measured g:</span>
+            <span class="physics-value highlight" id="result-g">--</span>
+        </div>
+        <div class="physics-row">
+            <span class="physics-label">Actual g:</span>
+            <span class="physics-value">9.81 m/s²</span>
+        </div>
+        <div class="physics-row">
+            <span class="physics-label">Error:</span>
+            <span class="physics-value error-val" id="result-error">--</span>
+        </div>
+    </div>
+
+    <!-- Length slider + reset button -->
+    <div id="length-panel">
+        <label>L (cm):</label>
+        <input type="range" id="length-slider" min="5" max="40" value="15" step="1">
+        <span id="length-value">15 cm</span>
+        <button id="reset-btn" onclick="resetExperiment()">Reset</button>
+    </div>
 
     <script>
         // ============================================
-        // GLOBAL VARIABLES
+        // DOM ELEMENTS
         // ============================================
         const video = document.getElementById('camera-feed');
         const canvas = document.getElementById('overlay-canvas');
         const ctx = canvas.getContext('2d');
         const statusEl = document.getElementById('status');
-        const fingerInfoEl = document.getElementById('finger-info');
         const fpsDisplayEl = document.getElementById('fps-display');
+        const swingInfoEl = document.getElementById('swing-info');
+        const instructionEl = document.getElementById('instruction');
+        const physicsPanelEl = document.getElementById('physics-panel');
+        const lengthSlider = document.getElementById('length-slider');
+        const lengthValueEl = document.getElementById('length-value');
 
+        // ============================================
+        // FPS TRACKING
+        // ============================================
         let frameCount = 0;
         let lastFpsTime = performance.now();
+        let currentFps = 0;
 
-        // Store the latest finger tip position
+        // ============================================
+        // HAND TRACKING STATE
+        // ============================================
+        let handDetected = false;
         let fingerTipX = 0;
         let fingerTipY = 0;
-        let handDetected = false;
+
+        // ============================================
+        // PENDULUM PHYSICS STATE
+        // ============================================
+
+        // Pendulum length in meters (user adjusts with slider)
+        let pendulumLengthCm = 15;
+        let pendulumLengthM = 0.15;
+
+        // We track the X position of the finger tip over time
+        // to detect oscillation (left-right swing)
+        const POSITION_HISTORY_SIZE = 300;  // Store last 300 frames (~10 seconds at 30fps)
+        let positionHistory = [];           // Array of { x: number, time: number }
+
+        // Peak detection for measuring period
+        let peaks = [];                     // Array of timestamps when finger reaches a peak (direction reversal)
+        let lastDirection = 0;              // -1 = moving left, +1 = moving right, 0 = unknown
+        const MIN_SWING_AMPLITUDE = 30;     // Minimum pixels the finger must move to count as a swing (filters out jitter)
+        let lastPeakX = 0;                  // X position of the last detected peak
+
+        // Results
+        const SWINGS_NEEDED = 5;            // We need 5 complete swings for accurate measurement
+        let experimentDone = false;
+        let measuredG = 0;
+        let measuredPeriod = 0;
+
+        // Trail effect - shows the path of the finger
+        const TRAIL_SIZE = 20;
+        let trail = [];                     // Array of { x, y, time }
+
+        // ============================================
+        // LENGTH SLIDER
+        // ============================================
+        lengthSlider.addEventListener('input', (e) => {
+            pendulumLengthCm = parseInt(e.target.value);
+            pendulumLengthM = pendulumLengthCm / 100;
+            lengthValueEl.textContent = pendulumLengthCm + ' cm';
+
+            // If experiment was already done, recalculate with new length
+            if (experimentDone && measuredPeriod > 0) {
+                calculateG();
+            }
+        });
+
+        // ============================================
+        // RESET EXPERIMENT
+        // ============================================
+        function resetExperiment() {
+            positionHistory = [];
+            peaks = [];
+            lastDirection = 0;
+            lastPeakX = 0;
+            experimentDone = false;
+            measuredG = 0;
+            measuredPeriod = 0;
+            trail = [];
+
+            physicsPanelEl.classList.remove('visible');
+            swingInfoEl.textContent = 'Swings: 0 / ' + SWINGS_NEEDED;
+            instructionEl.textContent = 'Swing your index finger like a pendulum';
+            instructionEl.style.display = 'block';
+        }
+
+        // ============================================
+        // PEAK DETECTION
+        // Detects when the finger changes direction (left→right or right→left)
+        // Each direction change = one peak = half a swing
+        // Two peaks = one complete oscillation = one period
+        // ============================================
+        function detectPeaks() {
+            if (positionHistory.length < 5) return;
+
+            // Get the most recent positions
+            const recent = positionHistory.slice(-5);
+
+            // Calculate the average movement direction
+            let dx = 0;
+            for (let i = 1; i < recent.length; i++) {
+                dx += recent[i].x - recent[i - 1].x;
+            }
+
+            // Determine current direction
+            let currentDirection = 0;
+            if (dx > 2) currentDirection = 1;        // Moving right
+            else if (dx < -2) currentDirection = -1;  // Moving left
+
+            // If direction is unclear (too small movement), keep previous direction
+            if (currentDirection === 0) return;
+
+            // Check for direction reversal (peak detected!)
+            if (lastDirection !== 0 && currentDirection !== lastDirection) {
+                const currentX = recent[recent.length - 1].x;
+                const amplitude = Math.abs(currentX - lastPeakX);
+
+                // Only count if the swing was big enough (filters out hand tremor)
+                if (amplitude >= MIN_SWING_AMPLITUDE) {
+                    const now = performance.now();
+
+                    // Don't count peaks that are too close together (minimum 150ms apart)
+                    if (peaks.length === 0 || (now - peaks[peaks.length - 1]) > 150) {
+                        peaks.push(now);
+                        lastPeakX = currentX;
+
+                        // Every 2 peaks = 1 complete swing
+                        const completedSwings = Math.floor((peaks.length - 1) / 2);
+                        swingInfoEl.textContent = 'Swings: ' + completedSwings + ' / ' + SWINGS_NEEDED;
+
+                        // Check if we have enough swings
+                        if (completedSwings >= SWINGS_NEEDED && !experimentDone) {
+                            calculateG();
+                        }
+                    }
+                }
+            }
+
+            lastDirection = currentDirection;
+        }
+
+        // ============================================
+        // CALCULATE g FROM MEASURED PERIOD
+        //
+        // Physics formula:
+        //   T = 2π × √(L / g)
+        //   Therefore: g = 4π² × L / T²
+        //
+        // T = period (seconds for one complete oscillation)
+        // L = pendulum length (meters)
+        // g = gravitational acceleration (m/s²)
+        // ============================================
+        function calculateG() {
+            if (peaks.length < 3) return;
+
+            // Calculate average period from all detected peaks
+            // Period = time between every OTHER peak (peak→peak→peak = one full oscillation)
+            let totalPeriod = 0;
+            let periodCount = 0;
+
+            for (let i = 2; i < peaks.length; i += 2) {
+                const period = (peaks[i] - peaks[i - 2]) / 1000;  // Convert ms to seconds
+                if (period > 0.2 && period < 5) {  // Sanity check: period should be between 0.2s and 5s
+                    totalPeriod += period;
+                    periodCount++;
+                }
+            }
+
+            if (periodCount === 0) return;
+
+            measuredPeriod = totalPeriod / periodCount;
+
+            // g = 4π²L / T²
+            measuredG = (4 * Math.PI * Math.PI * pendulumLengthM) / (measuredPeriod * measuredPeriod);
+
+            // Calculate error
+            const actualG = 9.81;
+            const errorPercent = Math.abs((measuredG - actualG) / actualG * 100);
+
+            // Show results
+            experimentDone = true;
+            instructionEl.style.display = 'none';
+
+            document.getElementById('result-swings').textContent = Math.floor((peaks.length - 1) / 2);
+            document.getElementById('result-period').textContent = measuredPeriod.toFixed(3) + ' s';
+            document.getElementById('result-length').textContent = pendulumLengthCm + ' cm (' + pendulumLengthM.toFixed(2) + ' m)';
+            document.getElementById('result-g').textContent = measuredG.toFixed(2) + ' m/s²';
+            document.getElementById('result-error').textContent = errorPercent.toFixed(1) + '%';
+
+            physicsPanelEl.classList.add('visible');
+
+            statusEl.textContent = 'Experiment complete! g = ' + measuredG.toFixed(2) + ' m/s²';
+            statusEl.style.color = '#00ff88';
+        }
+
+        // ============================================
+        // DRAW FUNCTIONS
+        // ============================================
+
+        function drawHandSkeleton(landmarks) {
+            const connections = [
+                [0,1],[1,2],[2,3],[3,4],
+                [0,5],[5,6],[6,7],[7,8],
+                [0,9],[9,10],[10,11],[11,12],
+                [0,13],[13,14],[14,15],[15,16],
+                [0,17],[17,18],[18,19],[19,20],
+                [5,9],[9,13],[13,17]
+            ];
+
+            ctx.strokeStyle = 'rgba(0, 255, 136, 0.5)';
+            ctx.lineWidth = 2;
+            connections.forEach(([a, b]) => {
+                ctx.beginPath();
+                ctx.moveTo(landmarks[a].x * canvas.width, landmarks[a].y * canvas.height);
+                ctx.lineTo(landmarks[b].x * canvas.width, landmarks[b].y * canvas.height);
+                ctx.stroke();
+            });
+
+            landmarks.forEach((point, index) => {
+                const x = point.x * canvas.width;
+                const y = point.y * canvas.height;
+                const isFingerTip = [4, 8, 12, 16, 20].includes(index);
+                ctx.beginPath();
+                ctx.arc(x, y, isFingerTip ? 6 : 3, 0, Math.PI * 2);
+                ctx.fillStyle = isFingerTip ? '#ff4444' : '#00ff88';
+                ctx.fill();
+            });
+        }
+
+        function drawPendulumOverlay(landmarks) {
+            const indexTip = landmarks[8];
+            const indexMCP = landmarks[5];
+
+            fingerTipX = indexTip.x * canvas.width;
+            fingerTipY = indexTip.y * canvas.height;
+            const pivotX = indexMCP.x * canvas.width;
+            const pivotY = indexMCP.y * canvas.height;
+
+            // Draw pendulum string (solid line, not dashed)
+            ctx.beginPath();
+            ctx.moveTo(pivotX, pivotY);
+            ctx.lineTo(fingerTipX, fingerTipY);
+            ctx.strokeStyle = '#ffaa00';
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+
+            // Draw pivot point (triangle bracket shape)
+            ctx.beginPath();
+            ctx.moveTo(pivotX - 12, pivotY - 8);
+            ctx.lineTo(pivotX, pivotY);
+            ctx.lineTo(pivotX + 12, pivotY - 8);
+            ctx.strokeStyle = '#ffaa00';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Draw horizontal reference line through pivot (shows equilibrium)
+            ctx.beginPath();
+            ctx.moveTo(pivotX - 60, pivotY);
+            ctx.lineTo(pivotX + 60, pivotY);
+            ctx.strokeStyle = 'rgba(255, 170, 0, 0.3)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Draw vertical equilibrium line from pivot
+            ctx.beginPath();
+            ctx.moveTo(pivotX, pivotY);
+            ctx.lineTo(pivotX, pivotY + 120);
+            ctx.strokeStyle = 'rgba(255, 170, 0, 0.2)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Draw bob (big circle at finger tip)
+            ctx.beginPath();
+            ctx.arc(fingerTipX, fingerTipY, 18, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 170, 0, 0.3)';
+            ctx.fill();
+            ctx.strokeStyle = '#ffaa00';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // Draw trail (fading dots showing recent path)
+            const now = performance.now();
+            trail.push({ x: fingerTipX, y: fingerTipY, time: now });
+
+            // Remove old trail points (keep last 500ms)
+            while (trail.length > 0 && now - trail[0].time > 500) {
+                trail.shift();
+            }
+
+            trail.forEach((point, i) => {
+                const age = (now - point.time) / 500;  // 0 = new, 1 = old
+                const opacity = 1 - age;
+                const radius = 3 * (1 - age);
+
+                ctx.beginPath();
+                ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 170, 0, ${opacity * 0.6})`;
+                ctx.fill();
+            });
+        }
+
+        function drawLiveData() {
+            // Draw a mini graph of recent X positions (bottom right area)
+            if (positionHistory.length < 10) return;
+
+            const graphX = canvas.width - 200;
+            const graphY = 60;
+            const graphW = 180;
+            const graphH = 80;
+
+            // Background
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillRect(graphX, graphY, graphW, graphH);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(graphX, graphY, graphW, graphH);
+
+            // Label
+            ctx.font = '10px monospace';
+            ctx.fillStyle = '#aaa';
+            ctx.textAlign = 'left';
+            ctx.fillText('Finger X position', graphX + 4, graphY + 12);
+
+            // Draw center line
+            ctx.beginPath();
+            ctx.moveTo(graphX, graphY + graphH / 2);
+            ctx.lineTo(graphX + graphW, graphY + graphH / 2);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.stroke();
+
+            // Get the last N positions that fit the graph width
+            const points = positionHistory.slice(-graphW);
+            if (points.length < 2) return;
+
+            // Find min/max for scaling
+            const xValues = points.map(p => p.x);
+            const minX = Math.min(...xValues);
+            const maxX = Math.max(...xValues);
+            const rangeX = maxX - minX || 1;
+
+            // Draw the oscillation curve
+            ctx.beginPath();
+            points.forEach((point, i) => {
+                const px = graphX + (i / points.length) * graphW;
+                const py = graphY + 16 + ((point.x - minX) / rangeX) * (graphH - 20);
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            });
+            ctx.strokeStyle = '#ffaa00';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
 
         // ============================================
         // MEDIAPIPE HANDS SETUP
@@ -129,19 +622,18 @@
 
         // ============================================
         // HAND DETECTION CALLBACK
-        // Runs every time MediaPipe processes a frame
         // ============================================
         hands.onResults((results) => {
             canvas.width = video.videoWidth || 1280;
             canvas.height = video.videoHeight || 720;
-
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             // FPS counter
             frameCount++;
             const now = performance.now();
             if (now - lastFpsTime >= 1000) {
-                fpsDisplayEl.textContent = 'FPS: ' + frameCount;
+                currentFps = frameCount;
+                fpsDisplayEl.textContent = 'FPS: ' + currentFps;
                 frameCount = 0;
                 lastFpsTime = now;
             }
@@ -150,116 +642,43 @@
                 handDetected = true;
                 const landmarks = results.multiHandLandmarks[0];
 
-                // ------------------------------------------
-                // DRAW HAND SKELETON (connections between landmarks)
-                // ------------------------------------------
-                const connections = [
-                    [0,1],[1,2],[2,3],[3,4],
-                    [0,5],[5,6],[6,7],[7,8],
-                    [0,9],[9,10],[10,11],[11,12],
-                    [0,13],[13,14],[14,15],[15,16],
-                    [0,17],[17,18],[18,19],[19,20],
-                    [5,9],[9,13],[13,17]
-                ];
+                // Draw hand skeleton
+                drawHandSkeleton(landmarks);
 
-                ctx.strokeStyle = 'rgba(0, 255, 136, 0.6)';
-                ctx.lineWidth = 2;
-                connections.forEach(([a, b]) => {
-                    const pA = landmarks[a];
-                    const pB = landmarks[b];
-                    ctx.beginPath();
-                    ctx.moveTo(pA.x * canvas.width, pA.y * canvas.height);
-                    ctx.lineTo(pB.x * canvas.width, pB.y * canvas.height);
-                    ctx.stroke();
-                });
+                // Draw pendulum overlay (string, bob, trail)
+                drawPendulumOverlay(landmarks);
 
-                // ------------------------------------------
-                // DRAW EACH LANDMARK POINT
-                // Finger tips (4,8,12,16,20) are red and bigger
-                // ------------------------------------------
-                landmarks.forEach((point, index) => {
-                    const x = point.x * canvas.width;
-                    const y = point.y * canvas.height;
-                    const isFingerTip = [4, 8, 12, 16, 20].includes(index);
+                // Record position for physics calculation
+                positionHistory.push({ x: fingerTipX, time: now });
+                if (positionHistory.length > POSITION_HISTORY_SIZE) {
+                    positionHistory.shift();
+                }
 
-                    ctx.beginPath();
-                    ctx.arc(x, y, isFingerTip ? 8 : 4, 0, Math.PI * 2);
-                    ctx.fillStyle = isFingerTip ? '#ff4444' : '#00ff88';
-                    ctx.fill();
-                });
+                // Detect peaks (direction reversals) for period measurement
+                if (!experimentDone) {
+                    detectPeaks();
+                    instructionEl.textContent = 'Swing your finger left ↔ right';
+                }
 
-                // ------------------------------------------
-                // HIGHLIGHT INDEX FINGER TIP (Landmark 8)
-                // This is our "pendulum bob"
-                // ------------------------------------------
-                const indexTip = landmarks[8];
-                fingerTipX = indexTip.x * canvas.width;
-                fingerTipY = indexTip.y * canvas.height;
+                // Draw live oscillation graph
+                drawLiveData();
 
-                // Big orange circle on index finger tip
-                ctx.beginPath();
-                ctx.arc(fingerTipX, fingerTipY, 16, 0, Math.PI * 2);
-                ctx.strokeStyle = '#ffaa00';
-                ctx.lineWidth = 3;
-                ctx.stroke();
-
-                // Label
-                ctx.font = 'bold 16px monospace';
-                ctx.fillStyle = '#ffaa00';
-                ctx.textAlign = 'left';
-                ctx.fillText('INDEX TIP', fingerTipX + 25, fingerTipY - 10);
-
-                // ------------------------------------------
-                // DRAW PENDULUM STRING
-                // Pivot = base of index finger (landmark 5)
-                // Bob = index finger tip (landmark 8)
-                // ------------------------------------------
-                const indexMCP = landmarks[5];
-                const pivotX = indexMCP.x * canvas.width;
-                const pivotY = indexMCP.y * canvas.height;
-
-                // Dashed line from pivot to tip
-                ctx.beginPath();
-                ctx.moveTo(pivotX, pivotY);
-                ctx.lineTo(fingerTipX, fingerTipY);
-                ctx.strokeStyle = '#ffaa00';
-                ctx.lineWidth = 2;
-                ctx.setLineDash([5, 5]);
-                ctx.stroke();
-                ctx.setLineDash([]);
-
-                // Pivot point
-                ctx.beginPath();
-                ctx.arc(pivotX, pivotY, 6, 0, Math.PI * 2);
-                ctx.fillStyle = '#ffaa00';
-                ctx.fill();
-                ctx.font = '12px monospace';
-                ctx.fillText('PIVOT', pivotX + 15, pivotY - 8);
-
-                // Update info display
-                fingerInfoEl.textContent =
-                    'Finger: (' + Math.round(fingerTipX) + ', ' + Math.round(fingerTipY) + ')';
-                fingerInfoEl.style.color = '#00ff88';
-
-                statusEl.textContent = 'Hand detected! Swing your index finger.';
-                statusEl.style.color = '#00ff88';
+                // Update status
+                if (!experimentDone) {
+                    statusEl.textContent = 'Tracking... Swing steadily!';
+                    statusEl.style.color = '#00ff88';
+                }
 
             } else {
                 handDetected = false;
-                fingerInfoEl.textContent = 'Finger: no hand detected';
-                fingerInfoEl.style.color = '#ff4444';
-                statusEl.textContent = 'Show your hand to the camera...';
+                instructionEl.textContent = 'Show your hand to the camera';
+                statusEl.textContent = 'No hand detected';
                 statusEl.style.color = '#ffaa00';
-
-                ctx.font = '20px sans-serif';
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-                ctx.textAlign = 'center';
-                ctx.fillText('Show your hand to the camera', canvas.width / 2, canvas.height / 2);
             }
         });
 
         // ============================================
-        // START CAMERA WITH MEDIAPIPE
+        // START CAMERA
         // ============================================
         statusEl.textContent = 'Starting camera + MediaPipe...';
 
@@ -274,7 +693,7 @@
 
         camera.start()
             .then(() => {
-                statusEl.textContent = 'Camera started. Show your hand...';
+                statusEl.textContent = 'Show your hand...';
                 statusEl.style.color = '#ffaa00';
                 canvas.width = video.videoWidth || 1280;
                 canvas.height = video.videoHeight || 720;
