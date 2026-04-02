@@ -4,6 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>ARScience</title>
+
+    <!-- Load MediaPipe Hands from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1675466124/drawing_utils.js" crossorigin="anonymous"></script>
+
     <style>
         * {
             margin: 0;
@@ -14,12 +20,10 @@
         body {
             background: #000;
             overflow: hidden;
-            font-family: 'Noto Sans Sinhala', sans-serif;
             width: 100vw;
             height: 100vh;
         }
 
-        /* Camera video feed - fills the whole screen */
         #camera-feed {
             position: fixed;
             top: 0;
@@ -29,7 +33,6 @@
             object-fit: cover;
         }
 
-        /* Canvas overlay on top of video - for drawing AR content */
         #overlay-canvas {
             position: fixed;
             top: 0;
@@ -39,65 +42,55 @@
             z-index: 10;
         }
 
-        /* Status text to confirm everything is working */
         #status {
             position: fixed;
             top: 20px;
             left: 20px;
             z-index: 20;
-            color: #00ff88;
-            font-size: 16px;
+            color: #ffaa00;
+            font-size: 14px;
             font-family: monospace;
-            background: rgba(0, 0, 0, 0.6);
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 14px;
+            border-radius: 8px;
+            max-width: 90vw;
+        }
+
+        #finger-info {
+            position: fixed;
+            top: 70px;
+            left: 20px;
+            z-index: 20;
+            color: #00ff88;
+            font-size: 14px;
+            font-family: monospace;
+            background: rgba(0, 0, 0, 0.7);
             padding: 8px 14px;
             border-radius: 8px;
         }
 
-        /* Button to switch between front and back camera */
-        #switch-camera-btn {
+        #fps-display {
             position: fixed;
-            bottom: 30px;
+            top: 20px;
             right: 20px;
             z-index: 20;
-            background: rgba(255, 255, 255, 0.2);
-            color: #fff;
-            border: 1px solid rgba(255, 255, 255, 0.4);
-            padding: 10px 18px;
-            border-radius: 25px;
+            color: #00ccff;
             font-size: 14px;
-            cursor: pointer;
-        }
-
-        /* Home button to go back to experiment menu (will be used later) */
-        #menu-btn {
-            position: fixed;
-            bottom: 30px;
-            left: 20px;
-            z-index: 20;
-            background: rgba(255, 255, 255, 0.2);
-            color: #fff;
-            border: 1px solid rgba(255, 255, 255, 0.4);
-            padding: 10px 18px;
-            border-radius: 25px;
-            font-size: 14px;
-            cursor: pointer;
+            font-family: monospace;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 14px;
+            border-radius: 8px;
         }
     </style>
 </head>
 <body>
 
-    <!-- This video element shows the live camera feed -->
     <video id="camera-feed" autoplay playsinline muted></video>
-
-    <!-- This canvas sits on top of the video - we draw AR overlays here -->
     <canvas id="overlay-canvas"></canvas>
 
-    <!-- Status indicator -->
-    <div id="status">Starting camera...</div>
-
-    <!-- Buttons -->
-    <button id="switch-camera-btn">Switch Camera</button>
-    <button id="menu-btn">Menu</button>
+    <div id="status">Loading MediaPipe Hands...</div>
+    <div id="finger-info">Finger: waiting...</div>
+    <div id="fps-display">FPS: --</div>
 
     <script>
         // ============================================
@@ -106,114 +99,190 @@
         const video = document.getElementById('camera-feed');
         const canvas = document.getElementById('overlay-canvas');
         const ctx = canvas.getContext('2d');
-        const status = document.getElementById('status');
+        const statusEl = document.getElementById('status');
+        const fingerInfoEl = document.getElementById('finger-info');
+        const fpsDisplayEl = document.getElementById('fps-display');
 
-        // Which camera is active: 'user' = front camera, 'environment' = back camera
-        let currentCamera = 'user';
+        let frameCount = 0;
+        let lastFpsTime = performance.now();
+
+        // Store the latest finger tip position
+        let fingerTipX = 0;
+        let fingerTipY = 0;
+        let handDetected = false;
 
         // ============================================
-        // FUNCTION: Start the camera
+        // MEDIAPIPE HANDS SETUP
         // ============================================
-        async function startCamera(facingMode) {
-            // Stop any existing camera stream first
-            if (video.srcObject) {
-                video.srcObject.getTracks().forEach(track => track.stop());
+        const hands = new Hands({
+            locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`;
             }
+        });
 
-            try {
-                // Request camera access from the browser
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        facingMode: facingMode,  // 'user' = front, 'environment' = back
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 },
-                        frameRate: { ideal: 30 }
-                    },
-                    audio: false  // We don't need microphone
-                });
-
-                // Connect the camera stream to the video element
-                video.srcObject = stream;
-
-                // Wait for video to actually start playing
-                await video.play();
-
-                // Set canvas size to match the video
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-
-                // Update status to show it's working
-                status.textContent = 'Camera OK | ' + video.videoWidth + 'x' + video.videoHeight + ' | ' + facingMode;
-                status.style.color = '#00ff88';
-
-                console.log('Camera started:', facingMode, video.videoWidth, 'x', video.videoHeight);
-
-            } catch (error) {
-                // If camera fails, show the error
-                status.textContent = 'Camera ERROR: ' + error.message;
-                status.style.color = '#ff4444';
-                console.error('Camera error:', error);
-            }
-        }
-
-        // ============================================
-        // FUNCTION: Switch between front and back camera
-        // ============================================
-        document.getElementById('switch-camera-btn').addEventListener('click', () => {
-            currentCamera = (currentCamera === 'user') ? 'environment' : 'user';
-            startCamera(currentCamera);
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.5
         });
 
         // ============================================
-        // FUNCTION: Animation loop (runs every frame ~30fps)
-        // This is where we will draw AR overlays later
+        // HAND DETECTION CALLBACK
+        // Runs every time MediaPipe processes a frame
         // ============================================
-        function animationLoop() {
-            // Only draw if video is playing and has dimensions
-            if (video.readyState >= 2) {
-                // Clear the overlay canvas
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
+        hands.onResults((results) => {
+            canvas.width = video.videoWidth || 1280;
+            canvas.height = video.videoHeight || 720;
 
-                // -----------------------------------------------
-                // TEMPORARY TEST: Draw a green circle in the center
-                // This proves the overlay canvas is working.
-                // We will replace this with AR content later.
-                // -----------------------------------------------
-                const centerX = canvas.width / 2;
-                const centerY = canvas.height / 2;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+            // FPS counter
+            frameCount++;
+            const now = performance.now();
+            if (now - lastFpsTime >= 1000) {
+                fpsDisplayEl.textContent = 'FPS: ' + frameCount;
+                frameCount = 0;
+                lastFpsTime = now;
+            }
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                handDetected = true;
+                const landmarks = results.multiHandLandmarks[0];
+
+                // ------------------------------------------
+                // DRAW HAND SKELETON (connections between landmarks)
+                // ------------------------------------------
+                const connections = [
+                    [0,1],[1,2],[2,3],[3,4],
+                    [0,5],[5,6],[6,7],[7,8],
+                    [0,9],[9,10],[10,11],[11,12],
+                    [0,13],[13,14],[14,15],[15,16],
+                    [0,17],[17,18],[18,19],[19,20],
+                    [5,9],[9,13],[13,17]
+                ];
+
+                ctx.strokeStyle = 'rgba(0, 255, 136, 0.6)';
+                ctx.lineWidth = 2;
+                connections.forEach(([a, b]) => {
+                    const pA = landmarks[a];
+                    const pB = landmarks[b];
+                    ctx.beginPath();
+                    ctx.moveTo(pA.x * canvas.width, pA.y * canvas.height);
+                    ctx.lineTo(pB.x * canvas.width, pB.y * canvas.height);
+                    ctx.stroke();
+                });
+
+                // ------------------------------------------
+                // DRAW EACH LANDMARK POINT
+                // Finger tips (4,8,12,16,20) are red and bigger
+                // ------------------------------------------
+                landmarks.forEach((point, index) => {
+                    const x = point.x * canvas.width;
+                    const y = point.y * canvas.height;
+                    const isFingerTip = [4, 8, 12, 16, 20].includes(index);
+
+                    ctx.beginPath();
+                    ctx.arc(x, y, isFingerTip ? 8 : 4, 0, Math.PI * 2);
+                    ctx.fillStyle = isFingerTip ? '#ff4444' : '#00ff88';
+                    ctx.fill();
+                });
+
+                // ------------------------------------------
+                // HIGHLIGHT INDEX FINGER TIP (Landmark 8)
+                // This is our "pendulum bob"
+                // ------------------------------------------
+                const indexTip = landmarks[8];
+                fingerTipX = indexTip.x * canvas.width;
+                fingerTipY = indexTip.y * canvas.height;
+
+                // Big orange circle on index finger tip
                 ctx.beginPath();
-                ctx.arc(centerX, centerY, 40, 0, Math.PI * 2);
-                ctx.strokeStyle = '#00ff88';
+                ctx.arc(fingerTipX, fingerTipY, 16, 0, Math.PI * 2);
+                ctx.strokeStyle = '#ffaa00';
                 ctx.lineWidth = 3;
                 ctx.stroke();
 
-                // Draw crosshair lines
+                // Label
+                ctx.font = 'bold 16px monospace';
+                ctx.fillStyle = '#ffaa00';
+                ctx.textAlign = 'left';
+                ctx.fillText('INDEX TIP', fingerTipX + 25, fingerTipY - 10);
+
+                // ------------------------------------------
+                // DRAW PENDULUM STRING
+                // Pivot = base of index finger (landmark 5)
+                // Bob = index finger tip (landmark 8)
+                // ------------------------------------------
+                const indexMCP = landmarks[5];
+                const pivotX = indexMCP.x * canvas.width;
+                const pivotY = indexMCP.y * canvas.height;
+
+                // Dashed line from pivot to tip
                 ctx.beginPath();
-                ctx.moveTo(centerX - 20, centerY);
-                ctx.lineTo(centerX + 20, centerY);
-                ctx.moveTo(centerX, centerY - 20);
-                ctx.lineTo(centerX, centerY + 20);
-                ctx.strokeStyle = '#00ff88';
-                ctx.lineWidth = 1;
+                ctx.moveTo(pivotX, pivotY);
+                ctx.lineTo(fingerTipX, fingerTipY);
+                ctx.strokeStyle = '#ffaa00';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
                 ctx.stroke();
+                ctx.setLineDash([]);
 
-                // Draw text
-                ctx.font = '14px monospace';
-                ctx.fillStyle = '#00ff88';
+                // Pivot point
+                ctx.beginPath();
+                ctx.arc(pivotX, pivotY, 6, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffaa00';
+                ctx.fill();
+                ctx.font = '12px monospace';
+                ctx.fillText('PIVOT', pivotX + 15, pivotY - 8);
+
+                // Update info display
+                fingerInfoEl.textContent =
+                    'Finger: (' + Math.round(fingerTipX) + ', ' + Math.round(fingerTipY) + ')';
+                fingerInfoEl.style.color = '#00ff88';
+
+                statusEl.textContent = 'Hand detected! Swing your index finger.';
+                statusEl.style.color = '#00ff88';
+
+            } else {
+                handDetected = false;
+                fingerInfoEl.textContent = 'Finger: no hand detected';
+                fingerInfoEl.style.color = '#ff4444';
+                statusEl.textContent = 'Show your hand to the camera...';
+                statusEl.style.color = '#ffaa00';
+
+                ctx.font = '20px sans-serif';
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
                 ctx.textAlign = 'center';
-                ctx.fillText('Overlay working', centerX, centerY + 60);
+                ctx.fillText('Show your hand to the camera', canvas.width / 2, canvas.height / 2);
             }
-
-            // Request next frame (this creates the loop)
-            requestAnimationFrame(animationLoop);
-        }
+        });
 
         // ============================================
-        // START EVERYTHING
+        // START CAMERA WITH MEDIAPIPE
         // ============================================
-        startCamera(currentCamera);   // Start the front camera
-        animationLoop();              // Start the animation loop
+        statusEl.textContent = 'Starting camera + MediaPipe...';
+
+        const camera = new Camera(video, {
+            onFrame: async () => {
+                await hands.send({ image: video });
+            },
+            width: 1280,
+            height: 720,
+            facingMode: 'user'
+        });
+
+        camera.start()
+            .then(() => {
+                statusEl.textContent = 'Camera started. Show your hand...';
+                statusEl.style.color = '#ffaa00';
+                canvas.width = video.videoWidth || 1280;
+                canvas.height = video.videoHeight || 720;
+            })
+            .catch((err) => {
+                statusEl.textContent = 'Camera ERROR: ' + err.message;
+                statusEl.style.color = '#ff4444';
+            });
     </script>
 
 </body>
