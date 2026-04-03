@@ -3,190 +3,144 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>ARScience — Pendulum</title>
+    <title>ARScience — Simple Pendulum</title>
 
-    <!-- Load MediaPipe Hands from CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
 
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #000; overflow: hidden; width: 100vw; height: 100vh; font-family: 'Segoe UI', sans-serif; }
 
-        body {
-            background: #000;
-            overflow: hidden;
-            width: 100vw;
-            height: 100vh;
-            font-family: 'Segoe UI', sans-serif;
-        }
+        #camera-feed { position: fixed; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+        #overlay-canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; }
 
-        #camera-feed {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            object-fit: cover;
-        }
-
-        #overlay-canvas {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            z-index: 10;
-        }
-
-        /* ---- TOP STATUS BAR ---- */
+        /* TOP BAR */
         #top-bar {
-            position: fixed;
-            top: 0; left: 0; right: 0;
-            z-index: 20;
-            background: rgba(0, 0, 0, 0.75);
-            padding: 10px 16px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+            background: linear-gradient(180deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.6) 100%);
+            padding: 10px 16px 8px;
+        }
+        .top-row { display: flex; justify-content: space-between; align-items: center; }
+        .top-title { color: #ffaa00; font-size: 15px; font-weight: bold; }
+        #fps-display { color: #00ccff; font-size: 11px; font-family: monospace; opacity: 0.7; }
+        #status { color: #aaa; font-size: 11px; margin-top: 2px; }
+
+        /* PHASE INDICATOR */
+        #phase-bar {
+            position: fixed; top: 52px; left: 16px; right: 16px; z-index: 20;
+            display: flex; gap: 6px; align-items: center;
+        }
+        .phase-step {
+            flex: 1; height: 4px; border-radius: 2px;
+            background: rgba(255,255,255,0.15);
+            transition: background 0.3s;
+        }
+        .phase-step.done { background: #ffaa00; }
+        .phase-step.active { background: #00ccff; animation: pulse-bar 1s ease-in-out infinite; }
+        @keyframes pulse-bar { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+        #phase-label {
+            position: fixed; top: 62px; left: 50%; transform: translateX(-50%);
+            z-index: 20; color: #aaa; font-size: 11px; font-family: monospace;
+            background: rgba(0,0,0,0.6); padding: 2px 10px; border-radius: 10px;
         }
 
-        #status {
-            color: #ffaa00;
-            font-size: 13px;
-            font-family: monospace;
-        }
-
-        #fps-display {
-            color: #00ccff;
-            font-size: 13px;
-            font-family: monospace;
-        }
-
-        /* ---- PHYSICS RESULTS PANEL ---- */
-        #physics-panel {
-            position: fixed;
-            bottom: 80px;
-            left: 10px;
-            right: 10px;
-            z-index: 20;
-            background: rgba(0, 0, 0, 0.85);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 12px;
-            padding: 14px 16px;
+        /* SWING COUNTER */
+        #swing-counter {
+            position: fixed; top: 82px; left: 50%; transform: translateX(-50%);
+            z-index: 20; background: rgba(0,0,0,0.75);
+            border: 1px solid rgba(255,170,0,0.3); border-radius: 30px;
+            padding: 5px 20px; color: #ffaa00;
+            font-size: 15px; font-family: monospace; font-weight: bold;
             display: none;
         }
+        #swing-counter.visible { display: block; }
 
-        #physics-panel.visible {
-            display: block;
+        /* TEMPO GUIDE */
+        #tempo-guide {
+            position: fixed; top: 115px; left: 50%; transform: translateX(-50%);
+            z-index: 20; text-align: center; display: none;
+        }
+        #tempo-guide.visible { display: block; }
+
+        #tempo-dot {
+            width: 20px; height: 20px; border-radius: 50%;
+            background: rgba(255,170,0,0.2); border: 2px solid rgba(255,170,0,0.4);
+            margin: 0 auto 4px; transition: all 0.08s;
+        }
+        #tempo-dot.beat {
+            background: #ffaa00; box-shadow: 0 0 16px rgba(255,170,0,0.5);
+            transform: scale(1.3);
         }
 
-        .physics-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 6px;
+        #speed-feedback {
+            font-size: 12px; font-family: monospace;
+            padding: 2px 10px; border-radius: 10px; display: inline-block;
         }
+        .speed-perfect { background: rgba(0,255,100,0.2); color: #00ff66; }
+        .speed-slow { background: rgba(255,100,100,0.2); color: #ff6b6b; }
+        .speed-fast { background: rgba(0,180,255,0.2); color: #00ccff; }
+        .speed-waiting { background: rgba(255,255,255,0.1); color: #888; }
 
-        .physics-label {
-            color: #aaa;
-            font-size: 13px;
-            font-family: monospace;
-        }
-
-        .physics-value {
-            color: #00ff88;
-            font-size: 15px;
-            font-family: monospace;
-            font-weight: bold;
-        }
-
-        .physics-value.highlight {
-            color: #ffaa00;
-            font-size: 20px;
-        }
-
-        .physics-value.error-val {
-            color: #ff6b6b;
-            font-size: 15px;
-        }
-
-        /* ---- SWING COUNTER ---- */
-        #swing-info {
-            position: fixed;
-            top: 50px;
-            left: 16px;
-            z-index: 20;
-            color: #fff;
-            font-size: 14px;
-            font-family: monospace;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 8px 14px;
-            border-radius: 8px;
-        }
-
-        /* ---- LENGTH INPUT PANEL ---- */
-        #length-panel {
-            position: fixed;
-            bottom: 20px;
-            left: 10px;
-            right: 10px;
-            z-index: 20;
-            background: rgba(0, 0, 0, 0.8);
-            border-radius: 12px;
-            padding: 10px 16px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        #length-panel label {
-            color: #ccc;
-            font-size: 12px;
-            font-family: monospace;
-            white-space: nowrap;
-        }
-
-        #length-slider {
-            flex: 1;
-            accent-color: #ffaa00;
-        }
-
-        #length-value {
-            color: #ffaa00;
-            font-size: 14px;
-            font-family: monospace;
-            font-weight: bold;
-            min-width: 55px;
-            text-align: right;
-        }
-
-        #reset-btn {
-            background: rgba(255, 100, 100, 0.3);
-            color: #ff6b6b;
-            border: 1px solid rgba(255, 100, 100, 0.4);
-            padding: 6px 14px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-family: monospace;
-            cursor: pointer;
-        }
-
-        /* ---- INSTRUCTION OVERLAY ---- */
+        /* INSTRUCTION */
         #instruction {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 15;
-            color: rgba(255, 255, 255, 0.8);
-            font-size: 18px;
-            text-align: center;
-            pointer-events: none;
-            text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+            position: fixed; top: 45%; left: 50%; transform: translate(-50%, -50%);
+            z-index: 15; color: rgba(255,255,255,0.9); font-size: 22px;
+            text-align: center; pointer-events: none;
+            text-shadow: 0 2px 12px rgba(0,0,0,0.9); line-height: 1.5;
+        }
+        .si { font-size: 15px; color: rgba(255,255,255,0.55); margin-top: 4px; }
+
+        /* RESULTS */
+        #results-panel {
+            position: fixed; bottom: 16px; left: 10px; right: 10px; z-index: 20;
+            background: rgba(0,0,0,0.94); border: 1px solid rgba(255,170,0,0.25);
+            border-radius: 16px; padding: 14px 18px; display: none;
+            max-height: 55vh; overflow-y: auto;
+        }
+        #results-panel.visible { display: block; }
+
+        .rh { color: #ffaa00; font-size: 12px; font-weight: bold; margin-bottom: 8px; text-align: center; letter-spacing: 1px; text-transform: uppercase; }
+        .rr { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+        .rl { color: #999; font-size: 12px; font-family: monospace; }
+        .rv { color: #00ff88; font-size: 13px; font-family: monospace; font-weight: bold; }
+        .rd { border-top: 1px solid rgba(255,255,255,0.08); margin: 8px 0; }
+
+        .big-g { text-align: center; margin: 6px 0; }
+        .big-g .gval { color: #ffaa00; font-size: 42px; font-family: monospace; font-weight: bold; letter-spacing: -1px; }
+        .big-g .gunit { color: #cc8800; font-size: 16px; font-family: monospace; }
+        .big-g .gactual { color: #666; font-size: 13px; font-family: monospace; margin-top: 2px; }
+
+        .err-badge {
+            display: inline-block; padding: 3px 14px; border-radius: 14px;
+            font-size: 14px; font-family: monospace; font-weight: bold;
+        }
+        .err-good { background: rgba(0,255,100,0.12); color: #00ff66; }
+        .err-ok { background: rgba(255,170,0,0.12); color: #ffaa00; }
+        .err-bad { background: rgba(255,80,80,0.12); color: #ff5050; }
+
+        .formula {
+            background: rgba(255,255,255,0.04); border-radius: 8px;
+            padding: 6px 10px; margin-top: 6px; text-align: center;
+            color: #bbb; font-size: 13px; font-family: monospace;
         }
 
-        /* ---- TRAIL EFFECT ---- */
-        .trail-dot {
-            position: absolute;
-            border-radius: 50%;
-            pointer-events: none;
+        /* CONTROLS */
+        #controls {
+            position: fixed; bottom: 16px; left: 10px; right: 10px;
+            z-index: 19; background: rgba(0,0,0,0.8); border-radius: 12px;
+            padding: 8px 14px; display: flex; align-items: center; gap: 8px;
         }
+        .btn {
+            padding: 6px 12px; border-radius: 20px; font-size: 11px;
+            font-family: monospace; cursor: pointer; border: 1px solid; white-space: nowrap;
+        }
+        .btn-reset { background: rgba(255,100,100,0.2); color: #ff6b6b; border-color: rgba(255,100,100,0.3); }
+        .btn-snd { background: rgba(0,200,255,0.2); color: #00ccff; border-color: rgba(0,200,255,0.3); }
+        .btn-snd.on { background: rgba(0,200,255,0.4); }
+        .mode-label { color: #888; font-size: 10px; font-family: monospace; }
+        .auto-l-display { color: #ffaa00; font-size: 12px; font-family: monospace; font-weight: bold; min-width: 65px; text-align: center; }
     </style>
 </head>
 <body>
@@ -194,514 +148,509 @@
     <video id="camera-feed" autoplay playsinline muted></video>
     <canvas id="overlay-canvas"></canvas>
 
-    <!-- Top bar -->
+    <!-- TOP -->
     <div id="top-bar">
-        <span id="status">Loading...</span>
-        <span id="fps-display">FPS: --</span>
+        <div class="top-row">
+            <span class="top-title">ARScience — සරල පෙන්ඩුලම</span>
+            <span id="fps-display">FPS: --</span>
+        </div>
+        <div id="status">Loading MediaPipe...</div>
     </div>
 
-    <!-- Swing counter -->
-    <div id="swing-info">Swings: 0 / 5</div>
+    <!-- PHASE BAR: Calibrate → Swing → Result -->
+    <div id="phase-bar">
+        <div class="phase-step" id="ph1"></div>
+        <div class="phase-step" id="ph2"></div>
+        <div class="phase-step" id="ph3"></div>
+    </div>
+    <div id="phase-label">Step 1: Calibrate / කැලිබ්‍රේට්</div>
 
-    <!-- Instruction text -->
-    <div id="instruction">Show your hand to the camera</div>
+    <!-- SWING COUNTER -->
+    <div id="swing-counter">0 / 5</div>
 
-    <!-- Physics results panel (hidden until we have results) -->
-    <div id="physics-panel">
-        <div class="physics-row">
-            <span class="physics-label">Swings counted:</span>
-            <span class="physics-value" id="result-swings">--</span>
-        </div>
-        <div class="physics-row">
-            <span class="physics-label">Avg period (T):</span>
-            <span class="physics-value" id="result-period">--</span>
-        </div>
-        <div class="physics-row">
-            <span class="physics-label">Pendulum length (L):</span>
-            <span class="physics-value" id="result-length">--</span>
-        </div>
-        <div class="physics-row" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.1);">
-            <span class="physics-label">Measured g:</span>
-            <span class="physics-value highlight" id="result-g">--</span>
-        </div>
-        <div class="physics-row">
-            <span class="physics-label">Actual g:</span>
-            <span class="physics-value">9.81 m/s²</span>
-        </div>
-        <div class="physics-row">
-            <span class="physics-label">Error:</span>
-            <span class="physics-value error-val" id="result-error">--</span>
-        </div>
+    <!-- TEMPO -->
+    <div id="tempo-guide">
+        <div id="tempo-dot"></div>
+        <span id="speed-feedback" class="speed-waiting">Beat එකට swing කරන්න</span>
     </div>
 
-    <!-- Length slider + reset button -->
-    <div id="length-panel">
-        <label>L (cm):</label>
-        <input type="range" id="length-slider" min="5" max="40" value="15" step="1">
-        <span id="length-value">15 cm</span>
-        <button id="reset-btn" onclick="resetExperiment()">Reset</button>
+    <!-- INSTRUCTION -->
+    <div id="instruction">
+        Show your hand to the camera
+        <div class="si">ඔබේ අත camera එකට පෙන්නන්න</div>
+    </div>
+
+    <!-- RESULTS -->
+    <div id="results-panel">
+        <div class="rh">Experiment Results / පරීක්ෂණ ප්‍රතිඵල</div>
+        <div class="rr"><span class="rl">Swings / පැද්දීම්:</span><span class="rv" id="r-sw">--</span></div>
+        <div class="rr"><span class="rl">Period T / පරිච්ඡේදය:</span><span class="rv" id="r-t">--</span></div>
+        <div class="rr"><span class="rl">Length L / දිග:</span><span class="rv" id="r-l">--</span></div>
+        <div class="rd"></div>
+        <div class="big-g">
+            <div><span class="gval" id="r-g">--</span> <span class="gunit">m/s²</span></div>
+            <div class="gactual">Actual / සැබෑ: 9.81 m/s²</div>
+        </div>
+        <div style="text-align:center;margin-top:4px;">
+            <span class="err-badge" id="r-err">Error: --%</span>
+        </div>
+        <div class="formula" id="r-formula">g = 4π²L / T²</div>
+    </div>
+
+    <!-- CONTROLS (shown during experiment, hidden when results show) -->
+    <div id="controls">
+        <button class="btn btn-snd on" id="snd-btn" onclick="toggleSound()">Beat ON</button>
+        <span class="mode-label">Auto L:</span>
+        <span class="auto-l-display" id="auto-l-display">-- cm</span>
+        <span style="flex:1"></span>
+        <button class="btn btn-reset" onclick="resetExperiment()">Reset</button>
     </div>
 
     <script>
         // ============================================
-        // DOM ELEMENTS
+        // DOM
         // ============================================
         const video = document.getElementById('camera-feed');
         const canvas = document.getElementById('overlay-canvas');
         const ctx = canvas.getContext('2d');
         const statusEl = document.getElementById('status');
-        const fpsDisplayEl = document.getElementById('fps-display');
-        const swingInfoEl = document.getElementById('swing-info');
-        const instructionEl = document.getElementById('instruction');
-        const physicsPanelEl = document.getElementById('physics-panel');
-        const lengthSlider = document.getElementById('length-slider');
-        const lengthValueEl = document.getElementById('length-value');
+        const fpsEl = document.getElementById('fps-display');
+        const swingEl = document.getElementById('swing-counter');
+        const instrEl = document.getElementById('instruction');
+        const resultsEl = document.getElementById('results-panel');
+        const tempoGuideEl = document.getElementById('tempo-guide');
+        const tempoDotEl = document.getElementById('tempo-dot');
+        const speedFbEl = document.getElementById('speed-feedback');
+        const sndBtnEl = document.getElementById('snd-btn');
+        const autoLEl = document.getElementById('auto-l-display');
+        const controlsEl = document.getElementById('controls');
+        const phLabel = document.getElementById('phase-label');
+        const ph1 = document.getElementById('ph1');
+        const ph2 = document.getElementById('ph2');
+        const ph3 = document.getElementById('ph3');
 
         // ============================================
-        // FPS TRACKING
+        // STATE
         // ============================================
-        let frameCount = 0;
-        let lastFpsTime = performance.now();
-        let currentFps = 0;
-
-        // ============================================
-        // HAND TRACKING STATE
-        // ============================================
+        let frameCount = 0, lastFpsTime = performance.now();
         let handDetected = false;
-        let fingerTipX = 0;
-        let fingerTipY = 0;
+        let fingerTipX = 0, fingerTipY = 0;
 
-        // ============================================
-        // PENDULUM PHYSICS STATE
-        // ============================================
+        // PHASES: 'detect' → 'calibrate' → 'swing' → 'done'
+        let phase = 'detect';
+        let calibrationStart = 0;
+        const CALIBRATION_DURATION = 2000; // 2 seconds to calibrate L
 
-        // Pendulum length in meters (user adjusts with slider)
-        let pendulumLengthCm = 15;
-        let pendulumLengthM = 0.15;
+        // Auto-L estimation
+        let estimatedLcm = 0;
+        let palmSamples = [];
+        const AVG_PALM_CM = 8.0;
 
-        // We track the X position of the finger tip over time
-        // to detect oscillation (left-right swing)
-        const POSITION_HISTORY_SIZE = 300;  // Store last 300 frames (~10 seconds at 30fps)
-        let positionHistory = [];           // Array of { x: number, time: number }
-
-        // Peak detection for measuring period
-        let peaks = [];                     // Array of timestamps when finger reaches a peak (direction reversal)
-        let lastDirection = 0;              // -1 = moving left, +1 = moving right, 0 = unknown
-        const MIN_SWING_AMPLITUDE = 30;     // Minimum pixels the finger must move to count as a swing (filters out jitter)
-        let lastPeakX = 0;                  // X position of the last detected peak
+        // Pendulum tracking
+        let posHist = [];
+        let peaks = [];
+        let lastDir = 0;
+        const MIN_AMP = 30;
+        let lastPeakX = 0;
 
         // Results
-        const SWINGS_NEEDED = 5;            // We need 5 complete swings for accurate measurement
-        let experimentDone = false;
-        let measuredG = 0;
-        let measuredPeriod = 0;
+        const SWINGS_NEEDED = 5;
+        let done = false;
+        let mG = 0, mT = 0;
 
-        // Trail effect - shows the path of the finger
-        const TRAIL_SIZE = 20;
-        let trail = [];                     // Array of { x, y, time }
+        // Visual
+        let trail = [];
+        let smoothAngle = 0;
+
+        // Audio
+        let audioCtx = null;
+        let soundOn = true;
+        let beatTimer = null;
 
         // ============================================
-        // LENGTH SLIDER
+        // AUDIO
         // ============================================
-        lengthSlider.addEventListener('input', (e) => {
-            pendulumLengthCm = parseInt(e.target.value);
-            pendulumLengthM = pendulumLengthCm / 100;
-            lengthValueEl.textContent = pendulumLengthCm + ' cm';
+        function initAudio() {
+            if (audioCtx) return;
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
 
-            // If experiment was already done, recalculate with new length
-            if (experimentDone && measuredPeriod > 0) {
-                calculateG();
+        function tick() {
+            if (!audioCtx || !soundOn) return;
+            const o = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            o.connect(g); g.connect(audioCtx.destination);
+            o.frequency.value = 880; o.type = 'sine';
+            g.gain.value = 0.12;
+            g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.07);
+            o.start(); o.stop(audioCtx.currentTime + 0.07);
+            tempoDotEl.classList.add('beat');
+            setTimeout(() => tempoDotEl.classList.remove('beat'), 90);
+        }
+
+        function toggleSound() {
+            soundOn = !soundOn;
+            sndBtnEl.textContent = soundOn ? 'Beat ON' : 'Beat OFF';
+            sndBtnEl.classList.toggle('on', soundOn);
+            if (!soundOn) stopBeat(); else if (phase === 'swing') startBeat();
+        }
+
+        function expectedT() {
+            const lm = estimatedLcm / 100;
+            return lm > 0 ? 2 * Math.PI * Math.sqrt(lm / 9.81) : 0.9;
+        }
+
+        function startBeat() {
+            stopBeat();
+            if (!soundOn || phase !== 'swing') return;
+            const halfT = (expectedT() / 2) * 1000;
+            beatTimer = setInterval(() => { if (handDetected && phase === 'swing') tick(); }, halfT);
+        }
+
+        function stopBeat() { if (beatTimer) { clearInterval(beatTimer); beatTimer = null; } }
+
+        // ============================================
+        // PHASES
+        // ============================================
+        function setPhase(p) {
+            phase = p;
+            ph1.className = 'phase-step'; ph2.className = 'phase-step'; ph3.className = 'phase-step';
+
+            if (p === 'detect') {
+                phLabel.textContent = 'Show hand / අත පෙන්නන්න';
+                instrEl.innerHTML = 'Show your hand to the camera<div class="si">ඔබේ අත camera එකට පෙන්නන්න</div>';
+                instrEl.style.display = 'block';
+                swingEl.classList.remove('visible');
+                tempoGuideEl.classList.remove('visible');
+                resultsEl.classList.remove('visible');
+                controlsEl.style.display = 'flex';
             }
-        });
+            else if (p === 'calibrate') {
+                ph1.className = 'phase-step active';
+                phLabel.textContent = 'Step 1: Calibrating L / දිග මැනීම...';
+                instrEl.innerHTML = 'Hold hand still...<div class="si">අත ස්ථාවරව තබන්න...</div>';
+                calibrationStart = performance.now();
+            }
+            else if (p === 'swing') {
+                ph1.className = 'phase-step done';
+                ph2.className = 'phase-step active';
+                phLabel.textContent = 'Step 2: Swing to beat / රිද්මයට swing කරන්න';
+                instrEl.innerHTML = 'Swing finger to the beat ↔<div class="si">beat එකට match කරලා ඇඟිල්ල swing කරන්න</div>';
+                swingEl.classList.add('visible');
+                swingEl.textContent = '0 / ' + SWINGS_NEEDED;
+                tempoGuideEl.classList.add('visible');
+                startBeat();
+            }
+            else if (p === 'done') {
+                ph1.className = 'phase-step done';
+                ph2.className = 'phase-step done';
+                ph3.className = 'phase-step done';
+                phLabel.textContent = 'Complete! / සම්පූර්ණයි!';
+                instrEl.style.display = 'none';
+                tempoGuideEl.classList.remove('visible');
+                swingEl.classList.remove('visible');
+                resultsEl.classList.add('visible');
+                controlsEl.style.display = 'none';
+                stopBeat();
+            }
+        }
 
         // ============================================
-        // RESET EXPERIMENT
+        // AUTO-L ESTIMATION
         // ============================================
-        function resetExperiment() {
-            positionHistory = [];
-            peaks = [];
-            lastDirection = 0;
-            lastPeakX = 0;
-            experimentDone = false;
-            measuredG = 0;
-            measuredPeriod = 0;
-            trail = [];
+        function estimateL(lm) {
+            const p5 = lm[5], p17 = lm[17];
+            const palmPx = Math.hypot((p5.x - p17.x) * canvas.width, (p5.y - p17.y) * canvas.height);
+            if (palmPx < 20) return;
 
-            physicsPanelEl.classList.remove('visible');
-            swingInfoEl.textContent = 'Swings: 0 / ' + SWINGS_NEEDED;
-            instructionEl.textContent = 'Swing your index finger like a pendulum';
-            instructionEl.style.display = 'block';
+            const pxCm = palmPx / AVG_PALM_CM;
+            const w = lm[0], t = lm[8];
+            const pendPx = Math.hypot((w.x - t.x) * canvas.width, (w.y - t.y) * canvas.height);
+            const lcm = pendPx / pxCm;
+
+            palmSamples.push(lcm);
+            if (palmSamples.length > 40) palmSamples.shift();
+            const sorted = [...palmSamples].sort((a, b) => a - b);
+            estimatedLcm = sorted[Math.floor(sorted.length / 2)];
+            autoLEl.textContent = estimatedLcm.toFixed(1) + ' cm';
         }
 
         // ============================================
         // PEAK DETECTION
-        // Detects when the finger changes direction (left→right or right→left)
-        // Each direction change = one peak = half a swing
-        // Two peaks = one complete oscillation = one period
         // ============================================
         function detectPeaks() {
-            if (positionHistory.length < 5) return;
-
-            // Get the most recent positions
-            const recent = positionHistory.slice(-5);
-
-            // Calculate the average movement direction
+            if (posHist.length < 5) return;
+            const r = posHist.slice(-5);
             let dx = 0;
-            for (let i = 1; i < recent.length; i++) {
-                dx += recent[i].x - recent[i - 1].x;
-            }
+            for (let i = 1; i < r.length; i++) dx += r[i].x - r[i - 1].x;
+            let d = dx > 2 ? 1 : dx < -2 ? -1 : 0;
+            if (d === 0) return;
 
-            // Determine current direction
-            let currentDirection = 0;
-            if (dx > 2) currentDirection = 1;        // Moving right
-            else if (dx < -2) currentDirection = -1;  // Moving left
-
-            // If direction is unclear (too small movement), keep previous direction
-            if (currentDirection === 0) return;
-
-            // Check for direction reversal (peak detected!)
-            if (lastDirection !== 0 && currentDirection !== lastDirection) {
-                const currentX = recent[recent.length - 1].x;
-                const amplitude = Math.abs(currentX - lastPeakX);
-
-                // Only count if the swing was big enough (filters out hand tremor)
-                if (amplitude >= MIN_SWING_AMPLITUDE) {
+            if (lastDir !== 0 && d !== lastDir) {
+                const cx = r[r.length - 1].x;
+                if (Math.abs(cx - lastPeakX) >= MIN_AMP) {
                     const now = performance.now();
-
-                    // Don't count peaks that are too close together (minimum 150ms apart)
                     if (peaks.length === 0 || (now - peaks[peaks.length - 1]) > 150) {
                         peaks.push(now);
-                        lastPeakX = currentX;
-
-                        // Every 2 peaks = 1 complete swing
-                        const completedSwings = Math.floor((peaks.length - 1) / 2);
-                        swingInfoEl.textContent = 'Swings: ' + completedSwings + ' / ' + SWINGS_NEEDED;
-
-                        // Check if we have enough swings
-                        if (completedSwings >= SWINGS_NEEDED && !experimentDone) {
-                            calculateG();
-                        }
+                        lastPeakX = cx;
+                        const sw = Math.floor((peaks.length - 1) / 2);
+                        swingEl.textContent = sw + ' / ' + SWINGS_NEEDED;
+                        updateSpeedFb();
+                        if (sw >= SWINGS_NEEDED && !done) calcG();
                     }
                 }
             }
+            lastDir = d;
+        }
 
-            lastDirection = currentDirection;
+        function updateSpeedFb() {
+            if (peaks.length < 3) { speedFbEl.textContent = 'Beat එකට swing කරන්න'; speedFbEl.className = 'speed-waiting'; return; }
+            const last = (peaks[peaks.length - 1] - peaks[peaks.length - 2]) / 1000;
+            const exp = expectedT() / 2;
+            const ratio = last / exp;
+            if (ratio > 1.3) { speedFbEl.textContent = 'Faster! / වේගවත්!'; speedFbEl.className = 'speed-slow'; }
+            else if (ratio < 0.7) { speedFbEl.textContent = 'Slower! / සෙමින්!'; speedFbEl.className = 'speed-fast'; }
+            else { speedFbEl.textContent = 'Perfect! / නිවැරදි!'; speedFbEl.className = 'speed-perfect'; }
         }
 
         // ============================================
-        // CALCULATE g FROM MEASURED PERIOD
-        //
-        // Physics formula:
-        //   T = 2π × √(L / g)
-        //   Therefore: g = 4π² × L / T²
-        //
-        // T = period (seconds for one complete oscillation)
-        // L = pendulum length (meters)
-        // g = gravitational acceleration (m/s²)
+        // CALCULATE g
         // ============================================
-        function calculateG() {
+        function calcG() {
             if (peaks.length < 3) return;
-
-            // Calculate average period from all detected peaks
-            // Period = time between every OTHER peak (peak→peak→peak = one full oscillation)
-            let totalPeriod = 0;
-            let periodCount = 0;
-
+            let tot = 0, cnt = 0;
             for (let i = 2; i < peaks.length; i += 2) {
-                const period = (peaks[i] - peaks[i - 2]) / 1000;  // Convert ms to seconds
-                if (period > 0.2 && period < 5) {  // Sanity check: period should be between 0.2s and 5s
-                    totalPeriod += period;
-                    periodCount++;
-                }
+                const p = (peaks[i] - peaks[i - 2]) / 1000;
+                if (p > 0.2 && p < 5) { tot += p; cnt++; }
+            }
+            if (cnt === 0) return;
+            mT = tot / cnt;
+
+            const lm = estimatedLcm / 100;
+            mG = (4 * Math.PI * Math.PI * lm) / (mT * mT);
+            const err = Math.abs((mG - 9.81) / 9.81 * 100);
+
+            done = true;
+
+            document.getElementById('r-sw').textContent = Math.floor((peaks.length - 1) / 2);
+            document.getElementById('r-t').textContent = mT.toFixed(3) + ' s';
+            document.getElementById('r-l').textContent = estimatedLcm.toFixed(1) + ' cm (' + lm.toFixed(3) + ' m)';
+            document.getElementById('r-g').textContent = mG.toFixed(2);
+            document.getElementById('r-err').textContent = 'Error / දෝෂය: ' + err.toFixed(1) + '%';
+            document.getElementById('r-err').className = 'err-badge ' + (err < 5 ? 'err-good' : err < 15 ? 'err-ok' : 'err-bad');
+            document.getElementById('r-formula').textContent = 'g = 4π² × ' + lm.toFixed(3) + ' / ' + mT.toFixed(3) + '² = ' + mG.toFixed(2);
+
+            statusEl.textContent = 'g = ' + mG.toFixed(2) + ' m/s² | Error: ' + err.toFixed(1) + '%';
+            statusEl.style.color = '#00ff88';
+
+            setPhase('done');
+        }
+
+        // ============================================
+        // RESET
+        // ============================================
+        function resetExperiment() {
+            posHist = []; peaks = []; lastDir = 0; lastPeakX = 0;
+            done = false; mG = 0; mT = 0; trail = []; palmSamples = [];
+            estimatedLcm = 0;
+            autoLEl.textContent = '-- cm';
+            setPhase('detect');
+        }
+
+        // ============================================
+        // DRAW
+        // ============================================
+        function drawPendulum(lm) {
+            const w = lm[0], t = lm[8];
+            const px = w.x * canvas.width, py = w.y * canvas.height - 30;
+            const bx = t.x * canvas.width, by = t.y * canvas.height;
+            fingerTipX = bx; fingerTipY = by;
+
+            const sLen = Math.hypot(bx - px, by - py);
+            const ang = Math.atan2(bx - px, by - py);
+            smoothAngle = smoothAngle * 0.7 + ang * 0.3;
+
+            // STAND
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = 'rgba(190,190,190,0.75)'; ctx.lineWidth = 5;
+            ctx.beginPath(); ctx.moveTo(px - 52, py - 52); ctx.lineTo(px + 52, py - 52); ctx.stroke();
+            ctx.lineWidth = 5;
+            ctx.beginPath(); ctx.moveTo(px - 48, py - 14); ctx.lineTo(px - 48, py - 52); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(px + 48, py - 14); ctx.lineTo(px + 48, py - 52); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(px - 56, py - 14); ctx.lineTo(px + 56, py - 14); ctx.lineWidth = 5; ctx.stroke();
+
+            // Clamp
+            ctx.beginPath(); ctx.arc(px, py, 7, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(170,170,170,0.85)'; ctx.fill();
+            ctx.strokeStyle = 'rgba(210,210,210,0.8)'; ctx.lineWidth = 1.5; ctx.stroke();
+            ctx.beginPath(); ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+            ctx.fillStyle = '#555'; ctx.fill();
+
+            // STRING
+            ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(bx, by);
+            ctx.strokeStyle = 'rgba(255,210,140,0.85)'; ctx.lineWidth = 2; ctx.stroke();
+
+            // EQUILIBRIUM
+            ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px, py + sLen);
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1;
+            ctx.setLineDash([5, 5]); ctx.stroke(); ctx.setLineDash([]);
+
+            // ANGLE ARC
+            if (Math.abs(smoothAngle) > 0.03) {
+                const ar = Math.min(45, sLen * 0.25);
+                const s = Math.PI / 2, e = Math.PI / 2 - smoothAngle;
+                ctx.beginPath(); ctx.arc(px, py, ar, Math.min(s, e), Math.max(s, e));
+                ctx.strokeStyle = 'rgba(0,200,255,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
+                const deg = Math.abs(smoothAngle * 180 / Math.PI).toFixed(1);
+                const ma = Math.PI / 2 - smoothAngle / 2;
+                ctx.font = 'bold 12px monospace'; ctx.fillStyle = '#00ccff';
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText('θ=' + deg + '°', px + (ar + 16) * Math.cos(ma), py + (ar + 16) * Math.sin(ma));
             }
 
-            if (periodCount === 0) return;
+            // L LABEL
+            if (estimatedLcm > 0) {
+                const mx = (px + bx) / 2, my = (py + by) / 2;
+                const lt = 'L=' + estimatedLcm.toFixed(1) + 'cm';
+                ctx.font = '11px monospace';
+                const tw = ctx.measureText(lt).width;
+                ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(mx + 10, my - 7, tw + 6, 16);
+                ctx.fillStyle = '#ffcc66'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+                ctx.fillText(lt, mx + 13, my + 1);
+            }
 
-            measuredPeriod = totalPeriod / periodCount;
+            // BOB shadow
+            ctx.beginPath(); ctx.arc(bx + 2, by + 2, 20, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fill();
+            // BOB
+            ctx.beginPath(); ctx.arc(bx, by, 20, 0, Math.PI * 2);
+            const bg = ctx.createRadialGradient(bx - 5, by - 5, 2, bx, by, 20);
+            bg.addColorStop(0, '#ffd700'); bg.addColorStop(0.4, '#e6a800'); bg.addColorStop(1, '#996600');
+            ctx.fillStyle = bg; ctx.fill();
+            ctx.strokeStyle = 'rgba(180,130,0,0.7)'; ctx.lineWidth = 1; ctx.stroke();
+            // Highlight
+            ctx.beginPath(); ctx.arc(bx - 6, by - 6, 5, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fill();
+            // Ring
+            ctx.beginPath(); ctx.arc(bx, by - 18, 2.5, 0, Math.PI * 2);
+            ctx.fillStyle = '#888'; ctx.fill();
 
-            // g = 4π²L / T²
-            measuredG = (4 * Math.PI * Math.PI * pendulumLengthM) / (measuredPeriod * measuredPeriod);
-
-            // Calculate error
-            const actualG = 9.81;
-            const errorPercent = Math.abs((measuredG - actualG) / actualG * 100);
-
-            // Show results
-            experimentDone = true;
-            instructionEl.style.display = 'none';
-
-            document.getElementById('result-swings').textContent = Math.floor((peaks.length - 1) / 2);
-            document.getElementById('result-period').textContent = measuredPeriod.toFixed(3) + ' s';
-            document.getElementById('result-length').textContent = pendulumLengthCm + ' cm (' + pendulumLengthM.toFixed(2) + ' m)';
-            document.getElementById('result-g').textContent = measuredG.toFixed(2) + ' m/s²';
-            document.getElementById('result-error').textContent = errorPercent.toFixed(1) + '%';
-
-            physicsPanelEl.classList.add('visible');
-
-            statusEl.textContent = 'Experiment complete! g = ' + measuredG.toFixed(2) + ' m/s²';
-            statusEl.style.color = '#00ff88';
+            // TRAIL
+            const now = performance.now();
+            trail.push({ x: bx, y: by, time: now });
+            while (trail.length > 0 && now - trail[0].time > 700) trail.shift();
+            if (trail.length > 2) {
+                ctx.beginPath();
+                trail.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+                ctx.strokeStyle = 'rgba(255,200,50,0.15)'; ctx.lineWidth = 3; ctx.stroke();
+            }
         }
 
-        // ============================================
-        // DRAW FUNCTIONS
-        // ============================================
-
-        function drawHandSkeleton(landmarks) {
-            const connections = [
-                [0,1],[1,2],[2,3],[3,4],
-                [0,5],[5,6],[6,7],[7,8],
-                [0,9],[9,10],[10,11],[11,12],
-                [0,13],[13,14],[14,15],[15,16],
-                [0,17],[17,18],[18,19],[19,20],
-                [5,9],[9,13],[13,17]
-            ];
-
-            ctx.strokeStyle = 'rgba(0, 255, 136, 0.5)';
-            ctx.lineWidth = 2;
-            connections.forEach(([a, b]) => {
+        function drawSubtleHand(lm) {
+            const c = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17]];
+            ctx.strokeStyle = 'rgba(0,255,136,0.12)'; ctx.lineWidth = 1;
+            c.forEach(([a,b]) => {
                 ctx.beginPath();
-                ctx.moveTo(landmarks[a].x * canvas.width, landmarks[a].y * canvas.height);
-                ctx.lineTo(landmarks[b].x * canvas.width, landmarks[b].y * canvas.height);
+                ctx.moveTo(lm[a].x * canvas.width, lm[a].y * canvas.height);
+                ctx.lineTo(lm[b].x * canvas.width, lm[b].y * canvas.height);
                 ctx.stroke();
             });
-
-            landmarks.forEach((point, index) => {
-                const x = point.x * canvas.width;
-                const y = point.y * canvas.height;
-                const isFingerTip = [4, 8, 12, 16, 20].includes(index);
-                ctx.beginPath();
-                ctx.arc(x, y, isFingerTip ? 6 : 3, 0, Math.PI * 2);
-                ctx.fillStyle = isFingerTip ? '#ff4444' : '#00ff88';
-                ctx.fill();
-            });
         }
 
-        function drawPendulumOverlay(landmarks) {
-            const indexTip = landmarks[8];
-            const indexMCP = landmarks[5];
-
-            fingerTipX = indexTip.x * canvas.width;
-            fingerTipY = indexTip.y * canvas.height;
-            const pivotX = indexMCP.x * canvas.width;
-            const pivotY = indexMCP.y * canvas.height;
-
-            // Draw pendulum string (solid line, not dashed)
+        function drawGraph() {
+            if (posHist.length < 10) return;
+            const gW = 140, gH = 45, gX = canvas.width - gW - 10, gY = 52;
+            ctx.fillStyle = 'rgba(0,0,0,0.65)';
+            ctx.beginPath(); ctx.roundRect(gX, gY, gW, gH, 6); ctx.fill();
+            ctx.font = '8px monospace'; ctx.fillStyle = '#444'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+            ctx.fillText('Oscillation', gX + 4, gY + 3);
+            const pts = posHist.slice(-gW);
+            if (pts.length < 2) return;
+            const xs = pts.map(p => p.x), mn = Math.min(...xs), mx = Math.max(...xs), rng = mx - mn || 1;
             ctx.beginPath();
-            ctx.moveTo(pivotX, pivotY);
-            ctx.lineTo(fingerTipX, fingerTipY);
-            ctx.strokeStyle = '#ffaa00';
-            ctx.lineWidth = 2.5;
-            ctx.stroke();
-
-            // Draw pivot point (triangle bracket shape)
-            ctx.beginPath();
-            ctx.moveTo(pivotX - 12, pivotY - 8);
-            ctx.lineTo(pivotX, pivotY);
-            ctx.lineTo(pivotX + 12, pivotY - 8);
-            ctx.strokeStyle = '#ffaa00';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-
-            // Draw horizontal reference line through pivot (shows equilibrium)
-            ctx.beginPath();
-            ctx.moveTo(pivotX - 60, pivotY);
-            ctx.lineTo(pivotX + 60, pivotY);
-            ctx.strokeStyle = 'rgba(255, 170, 0, 0.3)';
-            ctx.lineWidth = 1;
-            ctx.setLineDash([4, 4]);
-            ctx.stroke();
-            ctx.setLineDash([]);
-
-            // Draw vertical equilibrium line from pivot
-            ctx.beginPath();
-            ctx.moveTo(pivotX, pivotY);
-            ctx.lineTo(pivotX, pivotY + 120);
-            ctx.strokeStyle = 'rgba(255, 170, 0, 0.2)';
-            ctx.lineWidth = 1;
-            ctx.setLineDash([4, 4]);
-            ctx.stroke();
-            ctx.setLineDash([]);
-
-            // Draw bob (big circle at finger tip)
-            ctx.beginPath();
-            ctx.arc(fingerTipX, fingerTipY, 18, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(255, 170, 0, 0.3)';
-            ctx.fill();
-            ctx.strokeStyle = '#ffaa00';
-            ctx.lineWidth = 3;
-            ctx.stroke();
-
-            // Draw trail (fading dots showing recent path)
-            const now = performance.now();
-            trail.push({ x: fingerTipX, y: fingerTipY, time: now });
-
-            // Remove old trail points (keep last 500ms)
-            while (trail.length > 0 && now - trail[0].time > 500) {
-                trail.shift();
-            }
-
-            trail.forEach((point, i) => {
-                const age = (now - point.time) / 500;  // 0 = new, 1 = old
-                const opacity = 1 - age;
-                const radius = 3 * (1 - age);
-
-                ctx.beginPath();
-                ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(255, 170, 0, ${opacity * 0.6})`;
-                ctx.fill();
+            pts.forEach((p, i) => {
+                const x = gX + (i / pts.length) * gW, y = gY + 12 + ((p.x - mn) / rng) * (gH - 16);
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
             });
-        }
-
-        function drawLiveData() {
-            // Draw a mini graph of recent X positions (bottom right area)
-            if (positionHistory.length < 10) return;
-
-            const graphX = canvas.width - 200;
-            const graphY = 60;
-            const graphW = 180;
-            const graphH = 80;
-
-            // Background
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-            ctx.fillRect(graphX, graphY, graphW, graphH);
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(graphX, graphY, graphW, graphH);
-
-            // Label
-            ctx.font = '10px monospace';
-            ctx.fillStyle = '#aaa';
-            ctx.textAlign = 'left';
-            ctx.fillText('Finger X position', graphX + 4, graphY + 12);
-
-            // Draw center line
-            ctx.beginPath();
-            ctx.moveTo(graphX, graphY + graphH / 2);
-            ctx.lineTo(graphX + graphW, graphY + graphH / 2);
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-            ctx.stroke();
-
-            // Get the last N positions that fit the graph width
-            const points = positionHistory.slice(-graphW);
-            if (points.length < 2) return;
-
-            // Find min/max for scaling
-            const xValues = points.map(p => p.x);
-            const minX = Math.min(...xValues);
-            const maxX = Math.max(...xValues);
-            const rangeX = maxX - minX || 1;
-
-            // Draw the oscillation curve
-            ctx.beginPath();
-            points.forEach((point, i) => {
-                const px = graphX + (i / points.length) * graphW;
-                const py = graphY + 16 + ((point.x - minX) / rangeX) * (graphH - 20);
-                if (i === 0) ctx.moveTo(px, py);
-                else ctx.lineTo(px, py);
-            });
-            ctx.strokeStyle = '#ffaa00';
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
+            ctx.strokeStyle = '#ffaa00'; ctx.lineWidth = 1; ctx.stroke();
         }
 
         // ============================================
-        // MEDIAPIPE HANDS SETUP
+        // MEDIAPIPE
         // ============================================
         const hands = new Hands({
-            locateFile: (file) => {
-                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`;
-            }
+            locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${f}`
         });
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
 
-        hands.setOptions({
-            maxNumHands: 1,
-            modelComplexity: 1,
-            minDetectionConfidence: 0.6,
-            minTrackingConfidence: 0.5
-        });
-
-        // ============================================
-        // HAND DETECTION CALLBACK
-        // ============================================
         hands.onResults((results) => {
             canvas.width = video.videoWidth || 1280;
             canvas.height = video.videoHeight || 720;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // FPS counter
             frameCount++;
             const now = performance.now();
-            if (now - lastFpsTime >= 1000) {
-                currentFps = frameCount;
-                fpsDisplayEl.textContent = 'FPS: ' + currentFps;
-                frameCount = 0;
-                lastFpsTime = now;
-            }
+            if (now - lastFpsTime >= 1000) { fpsEl.textContent = 'FPS: ' + frameCount; frameCount = 0; lastFpsTime = now; }
 
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const wasHand = handDetected;
                 handDetected = true;
-                const landmarks = results.multiHandLandmarks[0];
+                const marks = results.multiHandLandmarks[0];
 
-                // Draw hand skeleton
-                drawHandSkeleton(landmarks);
+                if (!wasHand) initAudio();
 
-                // Draw pendulum overlay (string, bob, trail)
-                drawPendulumOverlay(landmarks);
+                drawSubtleHand(marks);
+                drawPendulum(marks);
+                estimateL(marks);
 
-                // Record position for physics calculation
-                positionHistory.push({ x: fingerTipX, time: now });
-                if (positionHistory.length > POSITION_HISTORY_SIZE) {
-                    positionHistory.shift();
+                // PHASE LOGIC
+                if (phase === 'detect') {
+                    setPhase('calibrate');
                 }
+                else if (phase === 'calibrate') {
+                    const elapsed = now - calibrationStart;
+                    // Progress bar visual
+                    const pct = Math.min(elapsed / CALIBRATION_DURATION, 1);
+                    ph1.style.background = `linear-gradient(90deg, #ffaa00 ${pct * 100}%, rgba(255,255,255,0.15) ${pct * 100}%)`;
 
-                // Detect peaks (direction reversals) for period measurement
-                if (!experimentDone) {
+                    if (elapsed >= CALIBRATION_DURATION && estimatedLcm > 3) {
+                        setPhase('swing');
+                    }
+                }
+                else if (phase === 'swing') {
+                    posHist.push({ x: fingerTipX, time: now });
+                    if (posHist.length > 300) posHist.shift();
                     detectPeaks();
-                    instructionEl.textContent = 'Swing your finger left ↔ right';
+                    statusEl.textContent = 'Tracking... L=' + estimatedLcm.toFixed(1) + 'cm | Expected T=' + expectedT().toFixed(2) + 's';
+                    statusEl.style.color = '#ffaa00';
                 }
 
-                // Draw live oscillation graph
-                drawLiveData();
-
-                // Update status
-                if (!experimentDone) {
-                    statusEl.textContent = 'Tracking... Swing steadily!';
-                    statusEl.style.color = '#00ff88';
-                }
+                drawGraph();
 
             } else {
                 handDetected = false;
-                instructionEl.textContent = 'Show your hand to the camera';
-                statusEl.textContent = 'No hand detected';
-                statusEl.style.color = '#ffaa00';
+                stopBeat();
+                if (phase === 'calibrate') setPhase('detect');
+                if (!done) {
+                    statusEl.textContent = 'No hand detected';
+                    statusEl.style.color = '#ff6b6b';
+                }
             }
         });
 
         // ============================================
-        // START CAMERA
+        // START
         // ============================================
-        statusEl.textContent = 'Starting camera + MediaPipe...';
+        setPhase('detect');
 
         const camera = new Camera(video, {
-            onFrame: async () => {
-                await hands.send({ image: video });
-            },
-            width: 1280,
-            height: 720,
-            facingMode: 'user'
+            onFrame: async () => { await hands.send({ image: video }); },
+            width: 1280, height: 720, facingMode: 'user'
         });
 
         camera.start()
-            .then(() => {
-                statusEl.textContent = 'Show your hand...';
-                statusEl.style.color = '#ffaa00';
-                canvas.width = video.videoWidth || 1280;
-                canvas.height = video.videoHeight || 720;
-            })
-            .catch((err) => {
-                statusEl.textContent = 'Camera ERROR: ' + err.message;
-                statusEl.style.color = '#ff4444';
-            });
+            .then(() => { statusEl.textContent = 'Show your hand...'; statusEl.style.color = '#aaa'; })
+            .catch(e => { statusEl.textContent = 'ERROR: ' + e.message; statusEl.style.color = '#ff4444'; });
     </script>
 
 </body>

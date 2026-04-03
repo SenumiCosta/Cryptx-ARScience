@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="si">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>ARScience — Chemistry Lab</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{background:#0a0a12;overflow:hidden;width:100vw;height:100vh;font-family:'Segoe UI',sans-serif;color:#fff}
+
+        /* ---- MENU SCREEN ---- */
+        #menu-screen{position:fixed;top:0;left:0;width:100%;height:100%;z-index:100;background:#0a0a12;display:flex;flex-direction:column;padding:20px}
+        #menu-screen.hidden{display:none}
+        .menu-title{color:#00ccff;font-size:22px;font-weight:bold;text-align:center;margin:10px 0 4px}
+        .menu-subtitle{color:#666;font-size:12px;text-align:center;margin-bottom:20px}
+
+        .preset-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+        .preset-card{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px;cursor:pointer;transition:all 0.2s}
+        .preset-card:hover,.preset-card:active{background:rgba(0,200,255,0.1);border-color:rgba(0,200,255,0.3)}
+        .preset-icon{font-size:28px;margin-bottom:6px}
+        .preset-name{font-size:13px;font-weight:bold;color:#fff;margin-bottom:3px}
+        .preset-desc{font-size:10px;color:#888;line-height:1.3}
+        .preset-si{font-size:9px;color:#555;margin-top:2px}
+
+        .divider{border-top:1px solid rgba(255,255,255,0.08);margin:12px 0;position:relative}
+        .divider-text{position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:#0a0a12;padding:0 10px;color:#555;font-size:11px}
+
+        .custom-input-area{margin-top:8px}
+        .custom-input-area textarea{width:100%;height:70px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:#fff;padding:10px;font-size:13px;resize:none;font-family:inherit}
+        .custom-input-area textarea::placeholder{color:#555}
+        .generate-btn{width:100%;margin-top:8px;padding:12px;background:linear-gradient(135deg,#0066cc,#00ccff);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:bold;cursor:pointer}
+        .generate-btn:disabled{opacity:0.4}
+
+        /* ---- LAB SCREEN ---- */
+        #lab-screen{position:fixed;top:0;left:0;width:100%;height:100%;display:none}
+        #lab-screen.active{display:block}
+        #camera-feed{position:fixed;top:0;left:0;width:100%;height:100%;object-fit:cover}
+        #lab-canvas{position:fixed;top:0;left:0;width:100%;height:100%;z-index:10}
+
+        #lab-top{position:fixed;top:0;left:0;right:0;z-index:20;background:linear-gradient(180deg,rgba(0,0,0,0.85),rgba(0,0,0,0.4));padding:8px 14px}
+        .lab-title{color:#00ccff;font-size:13px;font-weight:bold}
+        .lab-status{color:#888;font-size:10px}
+        .lab-back{color:#ff6b6b;font-size:11px;font-family:monospace;cursor:pointer;float:right;margin-top:-18px}
+
+        /* Measurement displays */
+        #measurements{position:fixed;top:50px;left:10px;z-index:20;display:flex;flex-direction:column;gap:6px}
+        .measure-box{background:rgba(0,0,0,0.8);border-radius:10px;padding:6px 12px;min-width:80px}
+        .measure-label{color:#666;font-size:9px;font-family:monospace}
+        .measure-val{font-size:22px;font-family:monospace;font-weight:bold}
+
+        /* Parameter panel */
+        #param-panel{position:fixed;top:50px;right:10px;z-index:20;background:rgba(0,0,0,0.8);border-radius:10px;padding:8px 12px;max-width:140px}
+        .param-title{color:#888;font-size:9px;font-family:monospace;margin-bottom:6px}
+        .param-row{margin-bottom:6px}
+        .param-name{color:#aaa;font-size:9px;font-family:monospace}
+        .param-slider{width:100%;accent-color:#00ccff;height:3px}
+        .param-val{color:#00ccff;font-size:10px;font-family:monospace;float:right}
+
+        /* Reaction info */
+        #reaction-info{position:fixed;bottom:170px;left:10px;right:10px;z-index:20;background:rgba(0,0,0,0.85);border-radius:10px;padding:8px 12px;font-size:11px;font-family:monospace;color:#aaa;text-align:center;display:none}
+        #reaction-info.visible{display:block}
+
+        /* Graph */
+        #graph-box{position:fixed;bottom:60px;left:10px;right:10px;z-index:20;background:rgba(0,0,0,0.85);border:1px solid rgba(0,200,255,0.15);border-radius:10px;padding:8px;height:110px}
+        #graph-label{color:#00ccff;font-size:9px;font-family:monospace}
+        #graph-cv{width:100%;height:85px}
+
+        /* Pour guide */
+        #pour-guide{position:fixed;bottom:12px;left:10px;right:10px;z-index:20;background:rgba(0,0,0,0.75);border-radius:10px;padding:6px 14px;display:flex;align-items:center;justify-content:space-between}
+        #pour-text{color:#aaa;font-size:11px;font-family:monospace}
+        .back-btn{padding:5px 12px;border-radius:16px;font-size:10px;font-family:monospace;cursor:pointer;border:1px solid rgba(255,100,100,0.3);background:rgba(255,100,100,0.15);color:#ff6b6b}
+        .reset-btn{padding:5px 12px;border-radius:16px;font-size:10px;font-family:monospace;cursor:pointer;border:1px solid rgba(0,200,255,0.3);background:rgba(0,200,255,0.15);color:#00ccff}
+
+        /* Effect notification */
+        #effect-notify{position:fixed;top:45%;left:50%;transform:translate(-50%,-50%);z-index:25;background:rgba(0,0,0,0.9);border-radius:16px;padding:16px 24px;text-align:center;display:none;border:1px solid rgba(0,200,255,0.3)}
+        #effect-notify.visible{display:block;animation:popIn .3s ease-out}
+        @keyframes popIn{from{transform:translate(-50%,-50%) scale(.8);opacity:0}to{transform:translate(-50%,-50%) scale(1);opacity:1}}
+    </style>
+</head>
+<body>
+
+<!-- ==================== MENU SCREEN ==================== -->
+<div id="menu-screen">
+    <div class="menu-title">ARScience — Chemistry Lab</div>
+    <div class="menu-subtitle">රසායන විද්‍යා අත්හදා බැලීම් / Select or describe an experiment</div>
+
+    <div class="preset-grid" id="preset-grid"></div>
+
+    <div class="divider"><span class="divider-text">OR DESCRIBE YOUR OWN / ඔබේම අත්හදා බැලීමක් විස්තර කරන්න</span></div>
+
+    <div class="custom-input-area">
+        <textarea id="custom-input" placeholder="e.g. Mix hydrochloric acid with sodium hydroxide using phenolphthalein indicator&#10;&#10;උදා: ෆීනොල්ෆ්තලීන් දර්ශකය සමඟ හයිඩ්‍රොක්ලෝරික් අම්ලය සෝඩියම් හයිඩ්‍රොක්සයිඩ් සමඟ මිශ්‍ර කරන්න"></textarea>
+        <button class="generate-btn" id="gen-btn" onclick="generateFromDescription()">Generate Experiment with AI / AI මගින් අත්හදා බැලීම සාදන්න</button>
+    </div>
+</div>
+
+<!-- ==================== LAB SCREEN ==================== -->
+<div id="lab-screen">
+    <video id="camera-feed" autoplay playsinline muted></video>
+    <canvas id="lab-canvas"></canvas>
+
+    <div id="lab-top">
+        <div class="lab-title" id="lab-title">Experiment</div>
+        <div class="lab-status" id="lab-status">Hand tracking loading...</div>
+        <span class="lab-back" onclick="goToMenu()">← Menu</span>
+    </div>
+
+    <div id="measurements"></div>
+    <div id="param-panel"><div class="param-title">PARAMETERS</div><div id="param-list"></div></div>
+
+    <div id="reaction-info"></div>
+    <div id="effect-notify"></div>
+
+    <div id="graph-box">
+        <div id="graph-label">Reaction Graph</div>
+        <canvas id="graph-cv"></canvas>
+    </div>
+
+    <div id="pour-guide">
+        <span id="pour-text">Raise hand to pour / අත ඔසවන්න pour කරන්න</span>
+        <button class="reset-btn" onclick="resetLab()">Reset</button>
+        <button class="back-btn" onclick="goToMenu()">Menu</button>
+    </div>
+</div>
+
+<script>
+// ============================================
+// EXPERIMENT PRESETS
+// ============================================
+const PRESETS = [
+    {
+        id: 'titration',
+        icon: '🧪',
+        name: 'Acid-Base Titration',
+        nameSi: 'අම්ල-භෂ්ම ටයිට්‍රේශනය',
+        desc: 'NaOH + HCl with phenolphthalein',
+        config: {
+            title: 'Acid-Base Titration / අම්ල-භෂ්ම ටයිට්‍රේශනය',
+            source: { name: 'NaOH', molarity: 0.1, volume: 50, color: [100,180,255,0.3], label: 'NaOH (0.1M)' },
+            target: { name: 'HCl', molarity: 0.1, volume: 25, color: [255,255,220,0.35], label: 'HCl (0.1M, 25mL)' },
+            reactionType: 'acid-base',
+            indicator: { name: 'Phenolphthalein / ෆීනොල්ෆ්තලීන්', phTransition: 8.2, colorBefore: [255,255,220,0.35], colorAfter: [255,105,180,0.7] },
+            effects: ['color_change','ph_curve'],
+            equivalenceVol: 25,
+            graphY: 'pH',
+            graphRange: [0, 14],
+            parameters: [
+                { name: 'NaOH Conc. (M)', key: 'sourceMolarity', min: 0.01, max: 1, step: 0.01, default: 0.1 },
+                { name: 'HCl Conc. (M)', key: 'targetMolarity', min: 0.01, max: 1, step: 0.01, default: 0.1 },
+                { name: 'HCl Vol. (mL)', key: 'targetVolume', min: 5, max: 50, step: 1, default: 25 }
+            ],
+            calcFunction: 'acidBase'
+        }
+    },
+    {
+        id: 'gas',
+        icon: '🫧',
+        name: 'Gas Production',
+        nameSi: 'වායු නිෂ්පාදනය',
+        desc: 'Vinegar + Baking Soda → CO₂',
+        config: {
+            title: 'Gas Production / වායු නිෂ්පාදනය — CH₃COOH + NaHCO₃',
+            source: { name: 'Vinegar (CH₃COOH)', molarity: 0.8, volume: 50, color: [255,240,200,0.3], label: 'Vinegar' },
+            target: { name: 'Baking Soda (NaHCO₃)', molarity: 0.5, volume: 30, color: [255,255,255,0.2], label: 'NaHCO₃ (aq)' },
+            reactionType: 'gas-production',
+            indicator: null,
+            effects: ['bubbles','fizz','color_change'],
+            equivalenceVol: 18.75,
+            graphY: 'CO₂ (mL)',
+            graphRange: [0, 500],
+            parameters: [
+                { name: 'Vinegar Conc. (M)', key: 'sourceMolarity', min: 0.1, max: 2, step: 0.1, default: 0.8 },
+                { name: 'NaHCO₃ Conc. (M)', key: 'targetMolarity', min: 0.1, max: 2, step: 0.1, default: 0.5 }
+            ],
+            calcFunction: 'gasProduction'
+        }
+    },
+    {
+        id: 'precipitation',
+        icon: '🔬',
+        name: 'Precipitation',
+        nameSi: 'අවක්ෂේපණය',
+        desc: 'AgNO₃ + NaCl → AgCl↓',
+        config: {
+            title: 'Precipitation / අවක්ෂේපණය — AgNO₃ + NaCl',
+            source: { name: 'AgNO₃', molarity: 0.1, volume: 50, color: [200,200,220,0.25], label: 'AgNO₃ (0.1M)' },
+            target: { name: 'NaCl', molarity: 0.1, volume: 25, color: [230,240,255,0.2], label: 'NaCl (0.1M, 25mL)' },
+            reactionType: 'precipitation',
+            indicator: null,
+            effects: ['precipitate','turbidity'],
+            equivalenceVol: 25,
+            graphY: 'Turbidity',
+            graphRange: [0, 100],
+            parameters: [
+                { name: 'AgNO₃ Conc. (M)', key: 'sourceMolarity', min: 0.01, max: 0.5, step: 0.01, default: 0.1 },
+                { name: 'NaCl Conc. (M)', key: 'targetMolarity', min: 0.01, max: 0.5, step: 0.01, default: 0.1 }
+            ],
+            calcFunction: 'precipitation'
+        }
+    },
+    {
+        id: 'exothermic',
+        icon: '🌡️',
+        name: 'Exothermic Reaction',
+        nameSi: 'බහිර්ක්ෂේපී ප්‍රතික්‍රියාව',
+        desc: 'HCl + NaOH → Heat',
+        config: {
+            title: 'Exothermic Reaction / බහිර්ක්ෂේපී — HCl + NaOH → Heat',
+            source: { name: 'NaOH (conc.)', molarity: 2.0, volume: 50, color: [100,180,255,0.3], label: 'NaOH (2M)' },
+            target: { name: 'HCl (conc.)', molarity: 2.0, volume: 25, color: [255,240,200,0.3], label: 'HCl (2M, 25mL)' },
+            reactionType: 'exothermic',
+            indicator: null,
+            effects: ['temperature','steam'],
+            equivalenceVol: 25,
+            graphY: 'Temp (°C)',
+            graphRange: [20, 80],
+            parameters: [
+                { name: 'NaOH Conc. (M)', key: 'sourceMolarity', min: 0.5, max: 5, step: 0.1, default: 2.0 },
+                { name: 'HCl Conc. (M)', key: 'targetMolarity', min: 0.5, max: 5, step: 0.1, default: 2.0 }
+            ],
+            calcFunction: 'exothermic'
+        }
+    }
+];
+
+// ============================================
+// RENDER MENU
+// ============================================
+const presetGrid = document.getElementById('preset-grid');
+PRESETS.forEach(p => {
+    const card = document.createElement('div');
+    card.className = 'preset-card';
+    card.onclick = () => startExperiment(p.config);
+    card.innerHTML = `<div class="preset-icon">${p.icon}</div><div class="preset-name">${p.name}</div><div class="preset-desc">${p.desc}</div><div class="preset-si">${p.nameSi}</div>`;
+    presetGrid.appendChild(card);
+});
+
+// ============================================
+// AI GENERATION (calls Claude API)
+// ============================================
+async function generateFromDescription() {
+    const desc = document.getElementById('custom-input').value.trim();
+    if (!desc) return;
+
+    const btn = document.getElementById('gen-btn');
+    btn.disabled = true;
+    btn.textContent = 'Generating... / සාදමින්...';
+
+    try {
+        const resp = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 1000,
+                messages: [{ role: 'user', content: `Generate a chemistry experiment config JSON for: "${desc}"
+
+Return ONLY valid JSON (no markdown, no backticks) with this exact structure:
+{
+  "title": "Experiment Name in English / සිංහල නම",
+  "source": { "name": "Chemical A", "molarity": 0.1, "volume": 50, "color": [R,G,B,opacity], "label": "Label" },
+  "target": { "name": "Chemical B", "molarity": 0.1, "volume": 25, "color": [R,G,B,opacity], "label": "Label" },
+  "reactionType": "acid-base|gas-production|precipitation|exothermic|redox",
+  "indicator": null or { "name": "Name", "phTransition": 8.2, "colorBefore": [R,G,B,A], "colorAfter": [R,G,B,A] },
+  "effects": ["color_change","bubbles","precipitate","temperature","steam","fizz","turbidity"],
+  "equivalenceVol": 25,
+  "graphY": "pH or CO₂ or Temp or Turbidity",
+  "graphRange": [min, max],
+  "parameters": [{ "name": "Display Name", "key": "sourceMolarity|targetMolarity|targetVolume", "min": 0.01, "max": 1, "step": 0.01, "default": 0.1 }],
+  "calcFunction": "acidBase|gasProduction|precipitation|exothermic"
+}
+
+Use realistic chemistry values. Colors should be RGBA arrays [0-255, 0-255, 0-255, 0-1].` }]
+            })
+        });
+
+        const data = await resp.json();
+        const text = data.content.map(c => c.text || '').join('');
+        const config = JSON.parse(text.replace(/```json|```/g, '').trim());
+        startExperiment(config);
+    } catch (err) {
+        alert('AI generation failed: ' + err.message + '\nPlease use a preset experiment.');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Generate Experiment with AI / AI මගින් අත්හදා බැලීම සාදන්න';
+    }
+}
+
+// ============================================
+// CHEMISTRY CALCULATION FUNCTIONS
+// ============================================
+const CALC = {
+    acidBase(added, config) {
+        const mS = config.source.molarity, mT = config.target.molarity;
+        const vT = config.target.volume;
+        const molesAcid = mT * vT / 1000;
+        const molesBase = mS * added / 1000;
+        const totalV = (vT + added) / 1000;
+        let ph;
+        if (Math.abs(molesBase - molesAcid) < 1e-6) ph = 7;
+        else if (molesBase < molesAcid) ph = Math.max(0, -Math.log10((molesAcid - molesBase) / totalV));
+        else ph = Math.min(14, 14 + Math.log10((molesBase - molesAcid) / totalV));
+        return { value: ph, label: 'pH', display: ph.toFixed(2) };
+    },
+    gasProduction(added, config) {
+        const mS = config.source.molarity;
+        const mT = config.target.molarity;
+        const vT = config.target.volume;
+        const molesAcid = mS * added / 1000;
+        const molesBase = mT * vT / 1000;
+        const molesReacted = Math.min(molesAcid, molesBase);
+        const co2mL = molesReacted * 24400; // molar volume at STP ~24.4L
+        return { value: co2mL, label: 'CO₂', display: co2mL.toFixed(0) + ' mL' };
+    },
+    precipitation(added, config) {
+        const mS = config.source.molarity;
+        const mT = config.target.molarity;
+        const vT = config.target.volume;
+        const molesA = mS * added / 1000;
+        const molesB = mT * vT / 1000;
+        const reacted = Math.min(molesA, molesB);
+        const turbidity = Math.min(100, (reacted / molesB) * 100);
+        return { value: turbidity, label: 'Turbidity', display: turbidity.toFixed(0) + '%' };
+    },
+    exothermic(added, config) {
+        const mS = config.source.molarity;
+        const mT = config.target.molarity;
+        const vT = config.target.volume;
+        const molesA = mS * added / 1000;
+        const molesB = mT * vT / 1000;
+        const reacted = Math.min(molesA, molesB);
+        const totalV = (vT + added) / 1000; // liters
+        const dH = 57100; // J/mol for strong acid-base
+        const heatJ = reacted * dH;
+        const massKg = totalV; // ~1kg/L
+        const dT = heatJ / (massKg * 4184);
+        const temp = 25 + dT;
+        return { value: temp, label: 'Temp', display: temp.toFixed(1) + '°C' };
+    }
+};
+
+// ============================================
+// LAB STATE
+// ============================================
+let currentConfig = null;
+let sourceAdded = 0;
+let graphData = [];
+let handY = 0;
+let handDetected = false;
+let pouring = false;
+let pourRate = 0;
+let particles = []; // For bubbles, precipitate, steam
+let notifyTimeout = null;
+let equivReached = false;
+
+// ============================================
+// START EXPERIMENT
+// ============================================
+function startExperiment(config) {
+    currentConfig = JSON.parse(JSON.stringify(config)); // Deep copy
+    sourceAdded = 0;
+    graphData = [];
+    particles = [];
+    equivReached = false;
+
+    document.getElementById('menu-screen').classList.add('hidden');
+    document.getElementById('lab-screen').classList.add('active');
+    document.getElementById('lab-title').textContent = config.title;
+
+    // Build parameter sliders
+    const paramList = document.getElementById('param-list');
+    paramList.innerHTML = '';
+    (config.parameters || []).forEach(p => {
+        const row = document.createElement('div');
+        row.className = 'param-row';
+        row.innerHTML = `<div class="param-name">${p.name} <span class="param-val" id="pv-${p.key}">${p.default}</span></div>
+            <input type="range" class="param-slider" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.default}"
+            oninput="updateParam('${p.key}',this.value)">`;
+        paramList.appendChild(row);
+    });
+
+    // Build measurement displays
+    const meas = document.getElementById('measurements');
+    meas.innerHTML = `
+        <div class="measure-box"><div class="measure-label">${config.graphY}</div><div class="measure-val" id="m-primary" style="color:#00ccff">--</div></div>
+        <div class="measure-box"><div class="measure-label">Added / එකතු කළ</div><div class="measure-val" id="m-added" style="color:#ffaa00;font-size:16px">0.00 mL</div></div>`;
+
+    document.getElementById('graph-label').textContent = config.graphY + ' vs Volume';
+
+    initLab();
+}
+
+function updateParam(key, val) {
+    if (key === 'sourceMolarity') currentConfig.source.molarity = parseFloat(val);
+    else if (key === 'targetMolarity') currentConfig.target.molarity = parseFloat(val);
+    else if (key === 'targetVolume') currentConfig.target.volume = parseFloat(val);
+    document.getElementById('pv-' + key).textContent = val;
+    // Recalculate equivalence
+    if (currentConfig.reactionType === 'acid-base') {
+        currentConfig.equivalenceVol = (currentConfig.target.molarity * currentConfig.target.volume) / currentConfig.source.molarity;
+    }
+}
+
+function goToMenu() {
+    document.getElementById('lab-screen').classList.remove('active');
+    document.getElementById('menu-screen').classList.remove('hidden');
+    stopLabCamera();
+}
+
+function resetLab() {
+    sourceAdded = 0; graphData = []; particles = []; equivReached = false;
+    document.getElementById('reaction-info').classList.remove('visible');
+}
+
+// ============================================
+// LAB CAMERA + MEDIAPIPE
+// ============================================
+const video = document.getElementById('camera-feed');
+const canvas = document.getElementById('lab-canvas');
+const ctx = canvas.getContext('2d');
+const graphCv = document.getElementById('graph-cv');
+const gctx = graphCv.getContext('2d');
+let labCamera = null;
+let labHands = null;
+
+function initLab() {
+    labHands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${f}` });
+    labHands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
+    labHands.onResults(onHandResults);
+
+    labCamera = new Camera(video, {
+        onFrame: async () => { if (labHands) await labHands.send({ image: video }); },
+        width: 1280, height: 720, facingMode: 'user'
+    });
+    labCamera.start().then(() => {
+        document.getElementById('lab-status').textContent = 'Hand tracking active / අත් ලුහුබැඳීම සක්‍රීයයි';
+        const gc = document.getElementById('graph-box');
+        graphCv.width = gc.clientWidth - 16;
+        graphCv.height = 85;
+    });
+}
+
+function stopLabCamera() {
+    if (video.srcObject) video.srcObject.getTracks().forEach(t => t.stop());
+    labHands = null;
+}
+
+// ============================================
+// HAND TRACKING CALLBACK
+// ============================================
+let lastTime = performance.now();
+
+function onHandResults(results) {
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const now = performance.now();
+    const dt = (now - lastTime) / 1000;
+    lastTime = now;
+
+    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        handDetected = true;
+        const lm = results.multiHandLandmarks[0];
+        const tip = lm[8];
+        handY = tip.y; // 0 = top, 1 = bottom
+
+        // Draw subtle hand
+        drawHand(lm);
+
+        // Pour logic: hand in upper 40% of screen = pouring
+        // Higher hand = faster pour
+        if (handY < 0.4) {
+            pouring = true;
+            pourRate = (0.4 - handY) / 0.4 * 3; // 0-3 mL/s
+        } else {
+            pouring = false;
+            pourRate = 0;
+        }
+
+        document.getElementById('lab-status').textContent = pouring
+            ? 'Pouring... / වත් කරමින්... (' + pourRate.toFixed(1) + ' mL/s)'
+            : 'Lower hand = stop / අත පහළට = නැවතුම';
+    } else {
+        handDetected = false;
+        pouring = false;
+        pourRate = 0;
+        document.getElementById('lab-status').textContent = 'Show hand / අත පෙන්නන්න';
+    }
+
+    // Update chemistry
+    if (pouring && sourceAdded < currentConfig.source.volume) {
+        sourceAdded = Math.min(sourceAdded + pourRate * dt, currentConfig.source.volume);
+    }
+
+    // Calculate reaction
+    const calc = CALC[currentConfig.calcFunction];
+    if (calc) {
+        const result = calc(sourceAdded, currentConfig);
+        document.getElementById('m-primary').textContent = result.display;
+
+        // Color for pH
+        if (currentConfig.calcFunction === 'acidBase') {
+            const ph = result.value;
+            document.getElementById('m-primary').style.color =
+                ph < 4 ? '#ff4444' : ph < 6 ? '#ffaa00' : ph < 8 ? '#00ff88' : ph < 10 ? '#ff69b4' : '#cc44ff';
+        }
+
+        // Record graph data
+        const lastD = graphData[graphData.length - 1];
+        if (!lastD || sourceAdded - lastD.vol > 0.15) {
+            graphData.push({ vol: sourceAdded, val: result.value });
+        }
+
+        // Equivalence check
+        if (!equivReached && sourceAdded >= currentConfig.equivalenceVol * 0.95) {
+            equivReached = true;
+            showNotify('Equivalence Point! / සමතුල්‍ය ලක්ෂ්‍යය!');
+            const ri = document.getElementById('reaction-info');
+            ri.textContent = currentConfig.source.name + ' + ' + currentConfig.target.name + ' → Complete reaction';
+            ri.classList.add('visible');
+        }
+    }
+
+    document.getElementById('m-added').textContent = sourceAdded.toFixed(2) + ' mL';
+
+    // Draw lab
+    drawLabSetup();
+    spawnParticles(dt);
+    drawParticles(dt);
+    drawGraph();
+
+    // Pour guide
+    document.getElementById('pour-text').textContent = pouring
+        ? 'Pouring... raise higher = faster / ඉහළට = වේගවත්'
+        : 'Raise hand above line to pour / pour කරන්න අත ඔසවන්න';
+}
+
+function drawHand(lm) {
+    const c = [[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17]];
+    ctx.strokeStyle = 'rgba(0,255,136,0.15)'; ctx.lineWidth = 1;
+    c.forEach(([a,b]) => { ctx.beginPath(); ctx.moveTo(lm[a].x*canvas.width,lm[a].y*canvas.height); ctx.lineTo(lm[b].x*canvas.width,lm[b].y*canvas.height); ctx.stroke(); });
+}
+
+// ============================================
+// DRAW LAB SETUP
+// ============================================
+function drawLabSetup() {
+    if (!currentConfig) return;
+    const W = canvas.width, H = canvas.height;
+    const cx = W * 0.5;
+    const s = v => v * Math.min(W, H) / 800;
+
+    // Pour threshold line
+    const pourLineY = H * 0.4;
+    ctx.strokeStyle = pouring ? 'rgba(0,200,255,0.4)' : 'rgba(255,255,255,0.1)';
+    ctx.lineWidth = 1; ctx.setLineDash([8,8]);
+    ctx.beginPath(); ctx.moveTo(0, pourLineY); ctx.lineTo(W, pourLineY); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = s(10) + 'px monospace'; ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.textAlign = 'left';
+    ctx.fillText('↑ Pour zone / වත් කිරීමේ කලාපය', 10, pourLineY - 6);
+
+    // Source container (burette - top)
+    const bX = cx, bTop = H * 0.15, bH = H * 0.2, bW = s(20);
+    const usedFrac = sourceAdded / currentConfig.source.volume;
+
+    ctx.strokeStyle = 'rgba(200,230,255,0.5)'; ctx.lineWidth = 2;
+    ctx.fillStyle = 'rgba(200,230,255,0.06)';
+    ctx.fillRect(bX - bW/2, bTop, bW, bH); ctx.strokeRect(bX - bW/2, bTop, bW, bH);
+
+    // Liquid in burette
+    const liqH = bH * (1 - usedFrac);
+    if (liqH > 0) {
+        const sc = currentConfig.source.color;
+        ctx.fillStyle = `rgba(${sc[0]},${sc[1]},${sc[2]},${sc[3]})`;
+        ctx.fillRect(bX - bW/2 + 2, bTop + (bH - liqH), bW - 4, liqH);
+    }
+
+    ctx.font = 'bold ' + s(10) + 'px monospace'; ctx.fillStyle = '#00ccff'; ctx.textAlign = 'center';
+    ctx.fillText(currentConfig.source.label, bX, bTop - s(8));
+
+    // Nozzle
+    ctx.fillStyle = 'rgba(200,230,255,0.3)'; ctx.fillRect(bX - s(3), bTop + bH, s(6), s(15));
+
+    // Drops
+    if (pouring && sourceAdded < currentConfig.source.volume) {
+        const dropStart = bTop + bH + s(15);
+        const dropEnd = H * 0.52;
+        const sc = currentConfig.source.color;
+        for (let i = 0; i < 3; i++) {
+            const off = ((performance.now() / 180 + i * 0.33) % 1);
+            const dy = dropStart + off * (dropEnd - dropStart);
+            ctx.beginPath(); ctx.ellipse(bX, dy, s(3), s(5), 0, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(${sc[0]},${sc[1]},${sc[2]},${0.7 * (1 - off)})`;
+            ctx.fill();
+        }
+    }
+
+    // Target container (beaker - bottom)
+    const beakX = cx, beakY = H * 0.54, beakW = s(110), beakH = s(90);
+
+    // Beaker walls
+    ctx.strokeStyle = 'rgba(200,230,255,0.4)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(beakX-beakW/2, beakY); ctx.lineTo(beakX-beakW/2-s(4), beakY+beakH); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(beakX+beakW/2, beakY); ctx.lineTo(beakX+beakW/2+s(4), beakY+beakH); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(beakX-beakW/2-s(4), beakY+beakH); ctx.lineTo(beakX+beakW/2+s(4), beakY+beakH); ctx.stroke();
+    // Spout
+    ctx.beginPath(); ctx.moveTo(beakX+beakW/2, beakY); ctx.lineTo(beakX+beakW/2+s(12), beakY-s(6)); ctx.stroke();
+
+    // Solution in beaker
+    const solColor = getSolutionColor();
+    const fillH = beakH * 0.75;
+    const sy = beakY + beakH - fillH;
+    ctx.fillStyle = solColor;
+    ctx.beginPath();
+    ctx.moveTo(beakX - beakW/2, sy);
+    ctx.lineTo(beakX - beakW/2 - s(4), beakY + beakH);
+    ctx.lineTo(beakX + beakW/2 + s(4), beakY + beakH);
+    ctx.lineTo(beakX + beakW/2, sy);
+    ctx.closePath(); ctx.fill();
+
+    // Surface meniscus
+    ctx.beginPath(); ctx.ellipse(beakX, sy, beakW/2, s(3), 0, 0, Math.PI * 2);
+    ctx.fillStyle = solColor; ctx.fill();
+
+    // Beaker label
+    ctx.font = s(9) + 'px monospace'; ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.textAlign = 'center';
+    ctx.fillText(currentConfig.target.label, beakX, beakY + beakH + s(14));
+    if (currentConfig.indicator) {
+        ctx.fillText('+ ' + currentConfig.indicator.name, beakX, beakY + beakH + s(24));
+    }
+}
+
+function getSolutionColor() {
+    if (!currentConfig) return 'rgba(255,255,255,0.2)';
+    const calc = CALC[currentConfig.calcFunction];
+    if (!calc) return 'rgba(255,255,255,0.2)';
+    const result = calc(sourceAdded, currentConfig);
+
+    if (currentConfig.indicator) {
+        const ph = result.value;
+        const trans = currentConfig.indicator.phTransition;
+        const cb = currentConfig.indicator.colorBefore;
+        const ca = currentConfig.indicator.colorAfter;
+        if (ph < trans - 0.3) return `rgba(${cb[0]},${cb[1]},${cb[2]},${cb[3]})`;
+        if (ph > trans + 0.3) return `rgba(${ca[0]},${ca[1]},${ca[2]},${ca[3]})`;
+        const t = (ph - (trans - 0.3)) / 0.6;
+        return `rgba(${Math.round(cb[0]+(ca[0]-cb[0])*t)},${Math.round(cb[1]+(ca[1]-cb[1])*t)},${Math.round(cb[2]+(ca[2]-cb[2])*t)},${(cb[3]+(ca[3]-cb[3])*t).toFixed(2)})`;
+    }
+
+    // Precipitation: gets cloudy
+    if (currentConfig.reactionType === 'precipitation') {
+        const turb = result.value / 100;
+        return `rgba(255,255,255,${0.1 + turb * 0.6})`;
+    }
+
+    // Exothermic: warm tint
+    if (currentConfig.reactionType === 'exothermic') {
+        const temp = result.value;
+        const t = Math.min((temp - 25) / 40, 1);
+        return `rgba(${Math.round(255)},${Math.round(200 - 100*t)},${Math.round(200 - 150*t)},${0.3 + t * 0.3})`;
+    }
+
+    return `rgba(${currentConfig.target.color[0]},${currentConfig.target.color[1]},${currentConfig.target.color[2]},${currentConfig.target.color[3]})`;
+}
+
+// ============================================
+// PARTICLES (bubbles, precipitate, steam)
+// ============================================
+function spawnParticles(dt) {
+    if (!currentConfig || !pouring) return;
+    const W = canvas.width, H = canvas.height;
+    const cx = W * 0.5;
+    const effects = currentConfig.effects || [];
+
+    if (effects.includes('bubbles') || effects.includes('fizz')) {
+        for (let i = 0; i < 3; i++) {
+            particles.push({ type: 'bubble', x: cx + (Math.random()-0.5)*60, y: H*0.62 + Math.random()*40, vy: -30 - Math.random()*50, size: 2 + Math.random()*4, life: 1.5 + Math.random() });
+        }
+    }
+    if (effects.includes('precipitate') || effects.includes('turbidity')) {
+        particles.push({ type: 'precipitate', x: cx + (Math.random()-0.5)*80, y: H*0.55 + Math.random()*20, vy: 10 + Math.random()*20, size: 1 + Math.random()*3, life: 3 + Math.random()*2 });
+    }
+    if (effects.includes('steam') || effects.includes('temperature')) {
+        const calc = CALC[currentConfig.calcFunction];
+        if (calc) {
+            const r = calc(sourceAdded, currentConfig);
+            if (r.value > 40) {
+                particles.push({ type: 'steam', x: cx + (Math.random()-0.5)*60, y: H*0.52, vy: -20 - Math.random()*30, vx: (Math.random()-0.5)*10, size: 3 + Math.random()*6, life: 1 + Math.random() });
+            }
+        }
+    }
+}
+
+function drawParticles(dt) {
+    particles = particles.filter(p => {
+        p.life -= dt;
+        if (p.life <= 0) return false;
+
+        p.y += (p.vy || 0) * dt;
+        p.x += (p.vx || 0) * dt;
+
+        const alpha = Math.min(p.life, 0.8);
+
+        if (p.type === 'bubble') {
+            ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+            ctx.strokeStyle = `rgba(200,230,255,${alpha})`; ctx.lineWidth = 1; ctx.stroke();
+        } else if (p.type === 'precipitate') {
+            ctx.fillStyle = `rgba(255,255,255,${alpha * 0.6})`;
+            ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
+        } else if (p.type === 'steam') {
+            ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+            ctx.fillStyle = `rgba(200,200,200,${alpha * 0.3})`; ctx.fill();
+            p.size += dt * 3;
+        }
+        return true;
+    });
+}
+
+// ============================================
+// GRAPH
+// ============================================
+function drawGraph() {
+    const W = graphCv.width, H = graphCv.height;
+    gctx.clearRect(0, 0, W, H);
+    if (!currentConfig || graphData.length < 1) return;
+
+    const pL = 30, pR = 8, pT = 4, pB = 16;
+    const gW = W - pL - pR, gH = H - pT - pB;
+    const [yMin, yMax] = currentConfig.graphRange;
+    const xMax = currentConfig.source.volume;
+
+    // Grid
+    gctx.strokeStyle = 'rgba(255,255,255,0.06)'; gctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+        const y = pT + gH * (1 - i/4);
+        gctx.beginPath(); gctx.moveTo(pL, y); gctx.lineTo(pL+gW, y); gctx.stroke();
+    }
+
+    // Equivalence line
+    if (currentConfig.equivalenceVol) {
+        const ex = pL + (currentConfig.equivalenceVol / xMax) * gW;
+        gctx.strokeStyle = 'rgba(255,105,180,0.25)'; gctx.setLineDash([3,3]);
+        gctx.beginPath(); gctx.moveTo(ex, pT); gctx.lineTo(ex, pT+gH); gctx.stroke();
+        gctx.setLineDash([]);
+    }
+
+    // Axes labels
+    gctx.font = '8px monospace'; gctx.fillStyle = '#555'; gctx.textAlign = 'right'; gctx.textBaseline = 'middle';
+    gctx.fillText(yMax, pL-3, pT+4);
+    gctx.fillText(yMin, pL-3, pT+gH);
+    gctx.textAlign = 'center'; gctx.textBaseline = 'top';
+    gctx.fillText(xMax+'mL', pL+gW, pT+gH+3);
+    gctx.fillText('0', pL, pT+gH+3);
+
+    // Plot
+    if (graphData.length > 1) {
+        gctx.beginPath();
+        graphData.forEach((d, i) => {
+            const x = pL + (d.vol / xMax) * gW;
+            const y = pT + gH - ((d.val - yMin) / (yMax - yMin)) * gH;
+            const cy = Math.max(pT, Math.min(pT + gH, y));
+            if (i === 0) gctx.moveTo(x, cy); else gctx.lineTo(x, cy);
+        });
+        gctx.strokeStyle = '#00ccff'; gctx.lineWidth = 2; gctx.stroke();
+
+        // Current dot
+        const last = graphData[graphData.length - 1];
+        const lx = pL + (last.vol / xMax) * gW;
+        const ly = pT + gH - ((last.val - yMin) / (yMax - yMin)) * gH;
+        gctx.beginPath(); gctx.arc(lx, Math.max(pT, Math.min(pT+gH, ly)), 3, 0, Math.PI*2);
+        gctx.fillStyle = '#00ff88'; gctx.fill();
+    }
+}
+
+// ============================================
+// NOTIFY
+// ============================================
+function showNotify(text) {
+    const el = document.getElementById('effect-notify');
+    el.textContent = text; el.classList.add('visible');
+    if (notifyTimeout) clearTimeout(notifyTimeout);
+    notifyTimeout = setTimeout(() => el.classList.remove('visible'), 3000);
+}
+</script>
+</body>
+</html>
